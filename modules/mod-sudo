@@ -1,0 +1,51 @@
+##
+## ** mod-sudo: Quick sudo prefix (OMZ sudo plugin inspired) **
+#* version: 2026-04-06
+
+## `please` - re-run the last command with sudo
+please () {
+	local LAST_CMD
+	if [ "$ZSH_NAME" ]; then
+		LAST_CMD=$(fc -ln -1 2>/dev/null)
+	else
+		LAST_CMD=$(HISTTIMEFORMAT='' history 1 | sed 's/^[ ]*[0-9]*[ ]*//')
+	fi
+	LAST_CMD="${LAST_CMD#"${LAST_CMD%%[![:space:]]*}"}"
+
+	if [ -z "$LAST_CMD" ]; then
+		echo "No previous command"
+		return 1
+	fi
+
+	case "$LAST_CMD" in
+	sudo\ *) echo "Already has sudo: $LAST_CMD"; return ;;
+	esac
+
+	echo "${_Cy}sudo $LAST_CMD${_CN}"
+	eval "sudo $LAST_CMD"
+}
+
+## `sudoedit <file>` - edit file as root (preserves $EDITOR)
+sudoedit () {
+	local F=${1:?Usage: sudoedit <file>}
+	local ED=${EDITOR:-vi}
+	sudo "$ED" "$F"
+}
+
+## `sudobang` - shortcut: sudo !! equivalent
+sudobang () { please; }
+
+# Esc-Esc keybinding to prepend sudo (zsh only)
+if [ "$ZSH_NAME" ]; then
+	_cle_sudo_widget () {
+		if [[ "$BUFFER" != sudo\ * ]]; then
+			BUFFER="sudo $BUFFER"
+			CURSOR=$((CURSOR + 5))
+		else
+			BUFFER="${BUFFER#sudo }"
+			CURSOR=$((CURSOR - 5))
+		fi
+	}
+	zle -N _cle_sudo_widget
+	bindkey '\e\e' _cle_sudo_widget
+fi

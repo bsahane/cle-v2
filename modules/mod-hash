@@ -1,0 +1,96 @@
+##
+## ** mod-hash: Hashing and checksum utilities **
+#* version: 2026-04-06
+
+## `md5 <file|text>` - compute MD5 hash
+md5 () {
+	if [ -f "$1" ]; then
+		if command -v md5sum >/dev/null 2>&1; then
+			md5sum "$1"
+		else
+			command md5 -r "$1"
+		fi
+	else
+		if command -v md5sum >/dev/null 2>&1; then
+			echo -n "$*" | md5sum | awk '{print $1}'
+		else
+			echo -n "$*" | command md5
+		fi
+	fi
+}
+
+## `sha1 <file|text>` - compute SHA1 hash
+sha1 () {
+	if [ -f "$1" ]; then
+		shasum -a 1 "$1" 2>/dev/null || sha1sum "$1" 2>/dev/null
+	else
+		echo -n "$*" | shasum -a 1 2>/dev/null | awk '{print $1}' || echo -n "$*" | sha1sum 2>/dev/null | awk '{print $1}'
+	fi
+}
+
+## `sha256 <file|text>` - compute SHA256 hash
+sha256 () {
+	if [ -f "$1" ]; then
+		shasum -a 256 "$1" 2>/dev/null || sha256sum "$1" 2>/dev/null
+	else
+		echo -n "$*" | shasum -a 256 2>/dev/null | awk '{print $1}' || echo -n "$*" | sha256sum 2>/dev/null | awk '{print $1}'
+	fi
+}
+
+## `hashfile <file>` - show all hashes for a file
+hashfile () {
+	local F="${1:?Usage: hashfile <file>}"
+	[ -f "$F" ] || { echo "File not found: $F"; return 1; }
+
+	echo "${_CL}=== Hashes: $(basename "$F") ===${_CN}"
+	echo "  Size: $(ls -lh "$F" | awk '{print $5}')"
+	echo ""
+	printf "  $_CU%-10s$_Cu " "MD5:"
+	md5 "$F" | awk '{print $1}'
+	printf "  $_CU%-10s$_Cu " "SHA1:"
+	sha1 "$F" | awk '{print $1}'
+	printf "  $_CU%-10s$_Cu " "SHA256:"
+	sha256 "$F" | awk '{print $1}'
+}
+
+## `verify <file> <expected_hash>` - verify file against hash
+verify () {
+	local F="${1:?Usage: verify <file> <expected_hash>}"
+	local EXPECTED="${2:?Usage: verify <file> <expected_hash>}"
+	[ -f "$F" ] || { echo "File not found: $F"; return 1; }
+
+	local LEN=${#EXPECTED}
+	local ACTUAL=""
+
+	case $LEN in
+	32)  ACTUAL=$(md5 "$F" | awk '{print $1}'); echo "Algorithm: MD5" ;;
+	40)  ACTUAL=$(sha1 "$F" | awk '{print $1}'); echo "Algorithm: SHA1" ;;
+	64)  ACTUAL=$(sha256 "$F" | awk '{print $1}'); echo "Algorithm: SHA256" ;;
+	*)   echo "Unknown hash length: $LEN (expected 32/40/64)"; return 1 ;;
+	esac
+
+	if [ "$ACTUAL" = "$EXPECTED" ]; then
+		echo "${_Cg}MATCH: $F is verified${_CN}"
+		return 0
+	else
+		echo "${_Cr}MISMATCH:${_CN}"
+		echo "  Expected: $EXPECTED"
+		echo "  Got:      $ACTUAL"
+		return 1
+	fi
+}
+
+## `checkdir [dir]` - checksum all files in directory for integrity
+checkdir () {
+	local D="${1:-.}"
+	echo "${_CL}=== Checksums: $D ===${_CN}"
+	find "$D" -maxdepth 1 -type f 2>/dev/null | sort | while read -r F; do
+		local H
+		if command -v sha256sum >/dev/null 2>&1; then
+			H=$(sha256sum "$F" | awk '{print $1}')
+		else
+			H=$(shasum -a 256 "$F" | awk '{print $1}')
+		fi
+		printf "  %-10s %s\n" "${H:0:12}..." "$(basename "$F")"
+	done
+}

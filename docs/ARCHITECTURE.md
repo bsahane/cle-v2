@@ -52,7 +52,12 @@ cle-v2/
 │   ├── mod-files          # File utilities (biggest, newest, dupes, swap, compare)
 │   ├── mod-colors         # Terminal color display (colors16, colors256, truecolor)
 │   ├── mod-process        # Process management (pof, killport, zombies, waitfor)
-│   └── mod-workspace      # Project workspace manager (activate, wsnew, wsclone, wslist)
+│   ├── mod-workspace      # Project workspace manager (activate, wsnew, wsclone, wslist)
+│   ├── mod-sudo           # Quick sudo prefix (please, Esc-Esc widget)
+│   ├── mod-serve          # Quick HTTP server, upload server, QR codes
+│   ├── mod-transfer       # File sharing (transfer.sh, 0x0.st, ix.io)
+│   ├── mod-remind         # Terminal timers, stopwatch, pomodoro, reminders
+│   └── mod-hash           # Hashing utilities (md5, sha256, verify, checkdir)
 ├── themes/                # Visual customization
 │   ├── cle-prompt         # Prompt theme presets
 │   └── cle-palette        # Terminal color palettes
@@ -281,4 +286,9 @@ Modules are auto-sourced on shell startup and included in remote session packs.
 | mod-timeline | timeline, activity | Session visualization |
 | mod-todo | ltodo | Universal todolist |
 | mod-workspace | activate, wsnew, wsclone, wslist, wsfind, wsopen, wsgo, wsinfo | Project workspace manager |
+| mod-sudo | please, sudoedit, sudobang, Esc-Esc widget | Quick sudo prefix |
+| mod-serve | serve, serve-upload, qr | Quick HTTP server |
+| mod-transfer | transfer, transfer-dir, share, paste-text | File sharing |
+| mod-remind | timer, stopwatch, pomodoro, remind, countdown | Terminal timers |
+| mod-hash | md5, sha1, sha256, hashfile, verify, checkdir | Hashing utilities |
 | mod-zoxide | j, ji | Smart directory jumping |

@@ -1,0 +1,74 @@
+##
+## ** mod-transfer: File sharing and transfer utilities **
+#* version: 2026-04-06
+
+## `transfer <file>` - upload file to transfer.sh (14-day expiry)
+transfer () {
+	local F="${1:?Usage: transfer <file>}"
+	[ -f "$F" ] || { echo "File not found: $F"; return 1; }
+	local BN=$(basename "$F")
+	local SIZE=$(ls -lh "$F" | awk '{print $5}')
+
+	echo "${_CL}Uploading $BN ($SIZE)...${_CN}"
+	local URL
+	URL=$(curl --progress-bar --upload-file "$F" "https://transfer.sh/$BN" 2>/dev/null)
+	if [ -n "$URL" ]; then
+		echo ""
+		echo "${_Cg}Uploaded: $URL${_CN}"
+		echo "Expires: 14 days"
+		echo "Download: curl -O $URL"
+		# Copy to clipboard if available
+		if command -v pbcopy >/dev/null 2>&1; then
+			echo -n "$URL" | pbcopy
+			echo "(copied to clipboard)"
+		elif command -v xclip >/dev/null 2>&1; then
+			echo -n "$URL" | xclip -selection clipboard
+			echo "(copied to clipboard)"
+		fi
+	else
+		echo "${_Cr}Upload failed${_CN}"
+		return 1
+	fi
+}
+
+## `transfer-dir <dir>` - compress and upload directory
+transfer-dir () {
+	local D="${1:?Usage: transfer-dir <directory>}"
+	[ -d "$D" ] || { echo "Directory not found: $D"; return 1; }
+	local BN=$(basename "$D")
+	local TMP="/tmp/${BN}.tar.gz"
+
+	echo "Compressing $D ..."
+	tar czf "$TMP" -C "$(dirname "$D")" "$BN"
+	transfer "$TMP"
+	rm -f "$TMP"
+}
+
+## `share <file>` - quick share via 0x0.st (permanent, 512MB limit)
+share () {
+	local F="${1:?Usage: share <file>}"
+	[ -f "$F" ] || { echo "File not found: $F"; return 1; }
+	echo "${_CL}Sharing $(basename "$F")...${_CN}"
+	local URL
+	URL=$(curl -sF "file=@$F" https://0x0.st 2>/dev/null)
+	if [ -n "$URL" ]; then
+		echo "${_Cg}$URL${_CN}"
+		command -v pbcopy >/dev/null 2>&1 && echo -n "$URL" | pbcopy && echo "(copied)"
+	else
+		echo "${_Cr}Share failed${_CN}"
+	fi
+}
+
+## `paste-text [name]` - upload text from stdin to ix.io (pastbin)
+paste-text () {
+	local NAME="${1:-paste}"
+	echo "Paste text (Ctrl+D to finish):"
+	local URL
+	URL=$(curl -sF "f:1=<-" https://ix.io 2>/dev/null)
+	if [ -n "$URL" ]; then
+		echo ""
+		echo "${_Cg}$URL${_CN}"
+	else
+		echo "${_Cr}Paste failed${_CN}"
+	fi
+}

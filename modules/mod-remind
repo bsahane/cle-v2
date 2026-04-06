@@ -1,0 +1,92 @@
+##
+## ** mod-remind: Terminal timers and reminders **
+#* version: 2026-04-06
+
+## `timer [seconds]` - countdown timer with notification (default: 300s / 5min)
+timer () {
+	local SECS=${1:-300}
+	local MSG="${2:-Timer finished}"
+	local START=$(date +%s)
+	local END=$((START + SECS))
+
+	echo "${_CL}Timer: ${SECS}s ($(date -d @$END +%H:%M:%S 2>/dev/null || date -r $END +%H:%M:%S 2>/dev/null))${_CN}"
+
+	while [ $(date +%s) -lt $END ]; do
+		local NOW=$(date +%s)
+		local LEFT=$((END - NOW))
+		local MIN=$((LEFT / 60))
+		local SEC=$((LEFT % 60))
+		printf "\r  %02d:%02d remaining " "$MIN" "$SEC"
+		sleep 1
+	done
+	printf "\r  ${_Cg}00:00 - DONE!${_CN}           \n"
+
+	typeset -f _cle_notify >/dev/null 2>&1 && _cle_notify "timer" "$SECS" "0"
+	# Bell character for terminal alert
+	printf '\a'
+}
+
+## `stopwatch` - simple stopwatch (Ctrl+C to stop)
+stopwatch () {
+	echo "${_CL}Stopwatch started. Press Ctrl+C to stop.${_CN}"
+	local START=$(date +%s)
+	trap 'local D=$(($(date +%s) - START)); printf "\n${_Cg}Elapsed: %02d:%02d:%02d${_CN}\n" $((D/3600)) $(((D%3600)/60)) $((D%60)); trap - INT; return' INT
+	while true; do
+		local NOW=$(date +%s)
+		local D=$((NOW - START))
+		printf "\r  %02d:%02d:%02d" $((D / 3600)) $(((D % 3600) / 60)) $((D % 60))
+		sleep 1
+	done
+}
+
+## `pomodoro [minutes]` - pomodoro timer (default: 25 min)
+pomodoro () {
+	local MIN=${1:-25}
+	echo "${_CL}=== Pomodoro: ${MIN} minutes ===${_CN}"
+	echo "Focus time started at $(date +%H:%M)"
+	timer $((MIN * 60)) "Pomodoro complete! Take a break."
+	echo ""
+	echo "${_Cg}Time for a break! (5 min suggested)${_CN}"
+}
+
+## `remind <minutes> <message>` - set a reminder
+remind () {
+	local MIN=${1:?Usage: remind <minutes> <message>}
+	shift
+	local MSG="${*:-Reminder}"
+	local SECS=$((MIN * 60))
+
+	echo "${_Cg}Reminder set: '$MSG' in ${MIN} minutes${_CN}"
+
+	(
+		sleep "$SECS"
+		printf '\a'
+		echo ""
+		echo "${_CL}=== REMINDER ===${_CN}"
+		echo "  $MSG"
+		echo "  Set ${MIN} minutes ago"
+		typeset -f _cle_notify >/dev/null 2>&1 && _cle_notify "remind: $MSG" "$SECS" "0"
+	) &
+	disown 2>/dev/null
+}
+
+## `countdown <HH:MM>` - countdown to specific time today
+countdown () {
+	local TARGET=${1:?Usage: countdown <HH:MM>}
+	local NOW=$(date +%s)
+	local TARGET_TS
+
+	if [ "$(uname)" = "Darwin" ]; then
+		TARGET_TS=$(date -j -f "%Y-%m-%d %H:%M" "$(date +%Y-%m-%d) $TARGET" +%s 2>/dev/null)
+	else
+		TARGET_TS=$(date -d "today $TARGET" +%s 2>/dev/null)
+	fi
+
+	[ -z "$TARGET_TS" ] && { echo "Invalid time format. Use HH:MM"; return 1; }
+
+	local DIFF=$((TARGET_TS - NOW))
+	[ "$DIFF" -le 0 ] && { echo "Time $TARGET has already passed"; return 1; }
+
+	echo "${_CL}Counting down to $TARGET${_CN}"
+	timer "$DIFF" "It's $TARGET!"
+}

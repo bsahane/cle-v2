@@ -1,0 +1,72 @@
+##
+## ** mod-serve: Quick HTTP server for file sharing **
+#* version: 2026-04-06
+
+## `serve [port] [dir]` - start HTTP server (default: port 8000, current dir)
+serve () {
+	local PORT=${1:-8000}
+	local DIR="${2:-.}"
+	local IP
+
+	if [ "$(uname)" = "Darwin" ]; then
+		IP=$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || echo "localhost")
+	else
+		IP=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "localhost")
+	fi
+
+	echo "${_CL}=== HTTP Server ===${_CN}"
+	echo "  Directory: $(cd "$DIR" && pwd)"
+	echo "  Local:     http://localhost:$PORT"
+	echo "  Network:   http://$IP:$PORT"
+	echo "  Stop:      Ctrl+C"
+	echo ""
+
+	if command -v python3 >/dev/null 2>&1; then
+		cd "$DIR" && python3 -m http.server "$PORT"
+	elif command -v python2 >/dev/null 2>&1; then
+		cd "$DIR" && python2 -m SimpleHTTPServer "$PORT"
+	elif command -v ruby >/dev/null 2>&1; then
+		cd "$DIR" && ruby -run -e httpd . -p "$PORT"
+	elif command -v php >/dev/null 2>&1; then
+		cd "$DIR" && php -S "0.0.0.0:$PORT"
+	else
+		echo "No suitable HTTP server found (need python3, ruby, or php)"
+		return 1
+	fi
+}
+
+## `serve-upload [port]` - HTTP server with upload support (python3)
+serve-upload () {
+	local PORT=${1:-8000}
+	if ! command -v python3 >/dev/null 2>&1; then
+		echo "python3 required"
+		return 1
+	fi
+	echo "${_CL}=== Upload Server on port $PORT ===${_CN}"
+	echo "  Upload: curl -F 'file=@yourfile' http://localhost:$PORT/upload"
+	echo ""
+	python3 -c "
+import http.server, cgi, os
+class H(http.server.SimpleHTTPRequestHandler):
+    def do_POST(self):
+        form = cgi.FieldStorage(fp=self.rfile, headers=self.headers,
+            environ={'REQUEST_METHOD':'POST'})
+        f = form['file']
+        with open(f.filename, 'wb') as out:
+            out.write(f.file.read())
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b'Uploaded: ' + f.filename.encode())
+http.server.HTTPServer(('', $PORT), H).serve_forever()
+" 2>/dev/null
+}
+
+## `qr <text>` - generate QR code in terminal (for sharing URLs)
+qr () {
+	local TEXT="${*:?Usage: qr <text or URL>}"
+	if command -v qrencode >/dev/null 2>&1; then
+		echo "$TEXT" | qrencode -t UTF8
+	else
+		curl -s "qrcode.show/$TEXT" 2>/dev/null || echo "Install qrencode or check internet"
+	fi
+}
