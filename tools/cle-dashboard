@@ -112,6 +112,32 @@ _print_at() {
     printf "%s" "$@"
 }
 
+# ── Progress Bar Helper ────────────────────────────────────────────────────────
+
+_progress_bar() {
+    local pct=$1 width=${2:-30} label=${3:-""}
+    local filled=$(( pct * width / 100 ))
+    local bar="" j
+
+    for ((j=0; j<width; j++)); do
+        if [ $j -lt $filled ]; then
+            if [ $pct -gt 90 ]; then
+                bar+="${C_BRED}█"
+            elif [ $pct -gt 70 ]; then
+                bar+="${C_BYEL}█"
+            elif [ $pct -gt 50 ]; then
+                bar+="${C_BCYN}█"
+            else
+                bar+="${C_BGRN}█"
+            fi
+        else
+            bar+="${C_BLK}░"
+        fi
+    done
+    printf "%s%s%s %s%d%%%s" "$bar" "$C_RESET" "" "$C_BOLD" "$pct" "$C_RESET"
+    [ -n "$label" ] && printf " %s" "$label"
+}
+
 # ── Tab Bar ──────────────────────────────────────────────────────────────────
 
 _draw_tabs() {
@@ -277,26 +303,27 @@ _draw_content() {
     local total=${#CONTENT[@]}
     local i y line
 
+    local content_w=$((COLS - 2))  # 1 for left border, 1 for scrollbar
     for ((y=0; y<visible; y++)); do
         i=$((SCROLL + y))
         _goto $((y + 3)) 0
 
         if [ "$i" -ge "$total" ]; then
-            printf "%-*s" "$COLS" ""
+            printf "%s %s%-*s" "$C_DIM$BX_V$C_RESET" "" "$((content_w))" ""
             continue
         fi
 
         line="${CONTENT[$i]}"
-        # Truncate to terminal width
-        if [ "${#line}" -gt "$((COLS - 1))" ]; then
-            line="${line:0:$((COLS - 4))}..."
+        if [ "${#line}" -gt "$((content_w - 1))" ]; then
+            line="${line:0:$((content_w - 4))}..."
         fi
-        printf "%-*s" "$COLS" ""
-        _goto $((y + 3)) 0
+        printf "%s %s" "$C_DIM$BX_V$C_RESET" ""
+        printf "%-*s" "$((content_w - 1))" ""
+        _goto $((y + 3)) 2
         _colorize_line "$line"
     done
 
-    # Scrollbar
+    # Scrollbar with gradient style
     if [ "$total" -gt "$visible" ] && [ "$visible" -gt 0 ]; then
         local sb_h=$((visible * visible / total))
         [ "$sb_h" -lt 1 ] && sb_h=1
@@ -304,9 +331,11 @@ _draw_content() {
         for ((y=0; y<visible; y++)); do
             _goto $((y + 3)) $((COLS - 1))
             if [ "$y" -ge "$sb_pos" ] && [ "$y" -lt "$((sb_pos + sb_h))" ]; then
-                printf "%s▓%s" "$C_BCYN" "$C_RESET"
+                printf "%s█%s" "$C_BCYN" "$C_RESET"
+            elif [ "$y" -eq "$((sb_pos - 1))" ] || [ "$y" -eq "$((sb_pos + sb_h))" ]; then
+                printf "%s▒%s" "$C_CYN" "$C_RESET"
             else
-                printf "%s░%s" "$C_BLK" "$C_RESET"
+                printf "%s▕%s" "$C_BLK" "$C_RESET"
             fi
         done
     fi
@@ -323,6 +352,12 @@ _collect_system() {
     kernel=$(uname -r)
     arch=$(uname -m)
 
+    local ncpu_q
+    ncpu_q=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo "?")
+    local load_q
+    load_q=$(cat /proc/loadavg 2>/dev/null | cut -d' ' -f1 || sysctl -n vm.loadavg 2>/dev/null | awk '{print $2}' || echo "?")
+    CONTENT+=("  ${C_BCYN}◈ ${hostname}${C_RESET}  │  ${os} ${arch}  │  ${ncpu_q} cores  │  Load: ${load_q}  │  $(date '+%H:%M:%S')")
+    CONTENT+=("")
     CONTENT+=("== ◈ SYSTEM INFORMATION ==")
     CONTENT+=("")
     CONTENT+=("  Hostname:     $fqdn")
@@ -358,19 +393,9 @@ _collect_system() {
                 Mem:*)
                     set -- $line
                     local pct=$(( $3 * 100 / $2 ))
-                    local bar_w=30 filled=$(( pct * 30 / 100 ))
-                    local bar_str=""
-                    local j
-                    for ((j=0; j<bar_w; j++)); do
-                        if [ $j -lt $filled ]; then bar_str+="█"; else bar_str+="░"; fi
-                    done
-                    if [ $pct -gt 80 ]; then
-                        CONTENT+=("  RAM:  ${C_BRED}${bar_str}${C_RESET} ${3}M / ${2}M (${pct}%)")
-                    elif [ $pct -gt 50 ]; then
-                        CONTENT+=("  RAM:  ${C_BYEL}${bar_str}${C_RESET} ${3}M / ${2}M (${pct}%)")
-                    else
-                        CONTENT+=("  RAM:  ${C_BGRN}${bar_str}${C_RESET} ${3}M / ${2}M (${pct}%)")
-                    fi
+                    local bar_out
+                    bar_out=$(_progress_bar $pct 30 "${3}M / ${2}M")
+                    CONTENT+=("  RAM:  $bar_out")
                     ;;
                 Swap:*)
                     set -- $line
@@ -394,14 +419,9 @@ _collect_system() {
                 used_mb=$(( used_pages * page_size / 1048576 ))
                 total_mb=$(( memsize / 1048576 ))
                 pct=$(( used_mb * 100 / total_mb ))
-                local bar_w=30 filled=$(( pct * 30 / 100 )) bar_str="" j
-                for ((j=0; j<bar_w; j++)); do
-                    if [ $j -lt $filled ]; then bar_str+="█"; else bar_str+="░"; fi
-                done
-                local bar_color="$C_BGRN"
-                [ $pct -gt 50 ] && bar_color="$C_BYEL"
-                [ $pct -gt 80 ] && bar_color="$C_BRED"
-                CONTENT+=("  RAM:  ${bar_color}${bar_str}${C_RESET} ${used_mb}M / ${total_mb}M (${pct}%)")
+                local bar_out
+                bar_out=$(_progress_bar $pct 30 "${used_mb}M / ${total_mb}M")
+                CONTENT+=("  RAM:  $bar_out")
             else
                 CONTENT+=("  Total RAM: ${mem_gb} GB")
             fi
