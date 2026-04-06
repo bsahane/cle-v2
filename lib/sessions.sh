@@ -18,13 +18,13 @@ _clepak () {
 		TW=$RD/tw-$CLE_FHN
 		EN=$RD/env-$CLE_FHN
 
-		cp "$CLE_RC" "$RC"
+		command cp -f "$CLE_RC" "$RC"
 
 		# Pack lib/ directory
 		local LIB_DIR=$RD/lib
 		if [ -d "$CLE_LIB" ]; then
 			mkdir -p "$LIB_DIR"
-			cp "$CLE_LIB"/*.sh "$LIB_DIR/" 2>/dev/null
+			command cp -f "$CLE_LIB"/*.sh "$LIB_DIR/" 2>/dev/null
 		fi
 
 		# Pack modules (selective via CLE_REMOTE_MODULES, or all)
@@ -33,11 +33,11 @@ _clepak () {
 			mkdir -p "$MOD_DIR"
 			if [ -n "$CLE_REMOTE_MODULES" ]; then
 				for _M in $CLE_REMOTE_MODULES; do
-					[ -f "$CLE_RD/modules/mod-$_M" ] && cp "$CLE_RD/modules/mod-$_M" "$MOD_DIR/"
+					[ -f "$CLE_RD/modules/mod-$_M" ] && command cp -f "$CLE_RD/modules/mod-$_M" "$MOD_DIR/"
 				done
 			else
 				for M in $CLE_RD/modules/mod-*; do
-					[ -f "$M" ] && cp "$M" "$MOD_DIR/"
+					[ -f "$M" ] && command cp -f "$M" "$MOD_DIR/"
 				done
 			fi
 		fi
@@ -46,24 +46,24 @@ _clepak () {
 		local THM_DIR=$RD/themes
 		if [ -d "$CLE_RD/themes" ]; then
 			mkdir -p "$THM_DIR"
-			cp "$CLE_RD"/themes/* "$THM_DIR/" 2>/dev/null
+			command cp -f "$CLE_RD"/themes/* "$THM_DIR/" 2>/dev/null
 		fi
 
 		# Pack commands/
 		local CMD_DIR=$RD/commands
 		if [ -d "$CLE_RD/commands" ]; then
 			mkdir -p "$CMD_DIR"
-			cp "$CLE_RD"/commands/* "$CMD_DIR/" 2>/dev/null
+			command cp -f "$CLE_RD"/commands/* "$CMD_DIR/" 2>/dev/null
 		fi
 
 		# Pack vimrc for remote vi
 		local USR_DIR=$RD/user
 		if [ -d "$CLE_RD/user" ]; then
 			mkdir -p "$USR_DIR"
-			cp "$CLE_RD"/user/* "$USR_DIR/" 2>/dev/null
+			command cp -f "$CLE_RD"/user/* "$USR_DIR/" 2>/dev/null
 		fi
 
-		cp "$CLE_TW" "$TW" 2>/dev/null
+		command cp -f "$CLE_TW" "$TW" 2>/dev/null
 
 		echo "# environment $CLE_USER@$CLE_FHN" >"$EN"
 		_clevdump "CLE_SRE|CLE_P..|^_C." >>"$EN"

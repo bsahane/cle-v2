@@ -104,8 +104,6 @@ builtin alias fd.='find . -type d -name'
 builtin alias v='vi'
 builtin alias less='less -R'
 builtin alias tf='tail -f'
-builtin alias head='head -n 20'
-builtin alias tail='tail -n 20'
 
 # Process management
 builtin alias psg='ps aux | grep -v grep | grep -i'
@@ -130,7 +128,6 @@ builtin alias gp='git pull'
 # Misc handy
 builtin alias tree='tree -C --dirsfirst 2>/dev/null || find . -print | sed -e "s;[^/]*/;|__ ;g;s;__|; ;g"'
 builtin alias reload='source $CLE_RC'
-builtin alias weather='curl -s "wttr.in/?format=3"'
 builtin alias mounted='mount | column -t'
 # Note: ports is provided as a richer function by mod-devtools
 
