@@ -206,12 +206,23 @@ _draw_status() {
         [ -n "$FILTER" ] && filter_hint="  │ Filter: '$FILTER'"
         local logfile_hint=""
         [ -n "$LOG_FILE" ] && [ "$ACTIVE_TAB" -eq 2 ] && logfile_hint="  │ 📄 ${LOG_FILE##*/}"
+        # Auto-refresh countdown
+        local now_s refresh_hint=""
+        now_s=$(date +%s)
+        local cached_t=${TAB_CACHE_TIME[$ACTIVE_TAB]:-0}
+        local ttl
+        ttl=$(_get_cache_ttl "$ACTIVE_TAB")
+        local age=$((now_s - cached_t))
+        if [ "$age" -lt "$ttl" ]; then
+            local remaining=$((ttl - age))
+            refresh_hint="  │ ↻ ${remaining}s"
+        fi
         _fill_line $((ROWS - 2)) "$BG_BLU$C_BWHT$C_BOLD" \
-            " ◈ ${TABS[$ACTIVE_TAB]}  │  $((SCROLL+1))-${end} of ${total} lines${filter_hint}${logfile_hint}"
+            " ◈ ${TABS[$ACTIVE_TAB]}  │  $((SCROLL+1))-${end} of ${total} lines${filter_hint}${logfile_hint}${refresh_hint}"
     fi
-    local keys=" 1-9:Tab  ↑↓/jk:Scroll  PgUp/PgDn  r:Refresh  /:Filter  q:Quit"
-    [ "$ACTIVE_TAB" -eq 2 ] && keys=" 1-9:Tab  ↑↓/jk:Scroll  L:LogFile  r:Refresh  /:Filter  q:Quit"
-    [ "$ACTIVE_TAB" -eq 5 ] && keys=" 1-9:Tab  ↑↓/jk:Scroll  P:Add Port  r:Refresh  /:Filter  q:Quit"
+    local keys=" 1-9:Tab  ↑↓/jk:Scroll  PgUp/PgDn  r:Refresh  /:Filter  ?:Help  q:Quit"
+    [ "$ACTIVE_TAB" -eq 2 ] && keys=" 1-9:Tab  ↑↓/jk:Scroll  L:LogFile  r:Refresh  /:Filter  ?:Help  q:Quit"
+    [ "$ACTIVE_TAB" -eq 5 ] && keys=" 1-9:Tab  ↑↓/jk:Scroll  P:Add Port  r:Refresh  /:Filter  ?:Help  q:Quit"
     _fill_line $((ROWS - 1)) "$BG_BLK$C_CYN" "$keys"
 }
 
@@ -254,43 +265,17 @@ _colorize_line() {
 
 _colorize_log_line() {
     local line="$1"
-    local lower
-    lower=$(echo "$line" | tr '[:upper:]' '[:lower:]')
-
-    # Apply lsee-style keyword highlighting inline
-    local result="$line"
+    local lower="${line,,}"  # bash 4+ lowercase
 
     case "$lower" in
         *error*|*fail*|*fatal*|*panic*|*critical*|*emergency*|*alert*)
-            result=$(echo "$result" | sed \
-                -e "s/[Ee][Rr][Rr][Oo][Rr]/${C_BRED}&${C_RESET}/g" \
-                -e "s/[Ff][Aa][Ii][Ll][A-Za-z]*/${C_BRED}&${C_RESET}/g" \
-                -e "s/[Ff][Aa][Tt][Aa][Ll]/${C_BRED}&${C_RESET}/g" \
-                -e "s/[Pp][Aa][Nn][Ii][Cc]/${C_BRED}&${C_RESET}/g" \
-                -e "s/[Cc][Rr][Ii][Tt][Ii][Cc][Aa][Ll]/${C_BRED}&${C_RESET}/g")
-            printf "%s" "$result" ;;
+            printf "%s%s%s" "$C_BRED" "$line" "$C_RESET" ;;
         *warn*|*deprecat*)
-            result=$(echo "$result" | sed \
-                -e "s/[Ww][Aa][Rr][Nn][A-Za-z]*/${C_BYEL}&${C_RESET}/g" \
-                -e "s/[Dd][Ee][Pp][Rr][Ee][Cc][Aa][Tt][A-Za-z]*/${C_BYEL}&${C_RESET}/g")
-            printf "%s" "$result" ;;
+            printf "%s%s%s" "$C_BYEL" "$line" "$C_RESET" ;;
         *removed*|*delet*|*reject*|*denied*|*refused*|*timeout*|*expired*)
-            result=$(echo "$result" | sed \
-                -e "s/[Rr][Ee][Mm][Oo][Vv][Ee][Dd]/${C_BMAG}&${C_RESET}/g" \
-                -e "s/[Dd][Ee][Ll][Ee][Tt][A-Za-z]*/${C_BMAG}&${C_RESET}/g" \
-                -e "s/[Rr][Ee][Jj][Ee][Cc][Tt][A-Za-z]*/${C_BMAG}&${C_RESET}/g" \
-                -e "s/[Dd][Ee][Nn][Ii][Ee][Dd]/${C_BMAG}&${C_RESET}/g" \
-                -e "s/[Rr][Ee][Ff][Uu][Ss][Ee][Dd]/${C_BMAG}&${C_RESET}/g" \
-                -e "s/[Tt][Ii][Mm][Ee][Oo][Uu][Tt]/${C_BRED}&${C_RESET}/g" \
-                -e "s/[Ee][Xx][Pp][Ii][Rr][Ee][Dd]/${C_BRED}&${C_RESET}/g")
-            printf "%s" "$result" ;;
-        *connect*|*accept*|*start*|*success*|*running*)
-            result=$(echo "$result" | sed \
-                -e "s/[Cc][Oo][Nn][Nn][Ee][Cc][Tt][A-Za-z]*/${C_BGRN}&${C_RESET}/g" \
-                -e "s/[Aa][Cc][Cc][Ee][Pp][Tt][A-Za-z]*/${C_BGRN}&${C_RESET}/g" \
-                -e "s/[Ss][Uu][Cc][Cc][Ee][Ss][Ss]/${C_BGRN}&${C_RESET}/g" \
-                -e "s/[Ss][Tt][Aa][Rr][Tt][A-Za-z]*/${C_BCYN}&${C_RESET}/g")
-            printf "%s" "$result" ;;
+            printf "%s%s%s" "$C_BMAG" "$line" "$C_RESET" ;;
+        *connect*|*accept*|*start*|*success*)
+            printf "%s%s%s" "$C_BGRN" "$line" "$C_RESET" ;;
         *info*|*debug*|*notice*)
             printf "%s%s%s" "$C_WHT" "$line" "$C_RESET" ;;
         *)
@@ -1080,6 +1065,64 @@ _select_logfile() {
     done
 }
 
+_show_help() {
+    CONTENT=()
+    CONTENT+=("== ❓ CLE DASHBOARD HELP ==")
+    CONTENT+=("")
+    CONTENT+=("  ${C_BCYN}${C_BOLD}Navigation${C_RESET}")
+    CONTENT+=("  ─────────────────────────────────────────")
+    CONTENT+=("  ${C_BYEL}1-9${C_RESET}          Switch to tab by number")
+    CONTENT+=("  ${C_BYEL}Tab${C_RESET}          Next tab")
+    CONTENT+=("  ${C_BYEL}Shift-Tab${C_RESET}    Previous tab")
+    CONTENT+=("  ${C_BYEL}↑ / k${C_RESET}        Scroll up one line")
+    CONTENT+=("  ${C_BYEL}↓ / j${C_RESET}        Scroll down one line")
+    CONTENT+=("  ${C_BYEL}PgUp${C_RESET}         Scroll up one page")
+    CONTENT+=("  ${C_BYEL}PgDn${C_RESET}         Scroll down one page")
+    CONTENT+=("  ${C_BYEL}Home / g${C_RESET}     Jump to top")
+    CONTENT+=("  ${C_BYEL}End / G${C_RESET}      Jump to bottom")
+    CONTENT+=("")
+    CONTENT+=("  ${C_BCYN}${C_BOLD}Actions${C_RESET}")
+    CONTENT+=("  ─────────────────────────────────────────")
+    CONTENT+=("  ${C_BYEL}r / R${C_RESET}        Force refresh current tab")
+    CONTENT+=("  ${C_BYEL}/${C_RESET}            Enter filter mode (type to search)")
+    CONTENT+=("  ${C_BYEL}L${C_RESET}            Select log file (Logs tab only)")
+    CONTENT+=("  ${C_BYEL}P${C_RESET}            Add cert target (Certs tab only)")
+    CONTENT+=("  ${C_BYEL}?${C_RESET}            Show this help")
+    CONTENT+=("  ${C_BYEL}q / Q${C_RESET}        Quit dashboard")
+    CONTENT+=("")
+    CONTENT+=("  ${C_BCYN}${C_BOLD}Tabs${C_RESET}")
+    CONTENT+=("  ─────────────────────────────────────────")
+    CONTENT+=("  ${C_BWHT}1${C_RESET} System     CPU, memory, disk, users")
+    CONTENT+=("  ${C_BWHT}2${C_RESET} Services   Running, failed, stopped services")
+    CONTENT+=("  ${C_BWHT}3${C_RESET} Logs       System logs with keyword highlighting")
+    CONTENT+=("  ${C_BWHT}4${C_RESET} Network    Interfaces, ports, routes, DNS")
+    CONTENT+=("  ${C_BWHT}5${C_RESET} Processes  Top CPU and memory consumers")
+    CONTENT+=("  ${C_BWHT}6${C_RESET} Certs      SSL/TLS certificate inspection")
+    CONTENT+=("  ${C_BWHT}7${C_RESET} Storage    Filesystem usage, mount points")
+    CONTENT+=("  ${C_BWHT}8${C_RESET} Security   SELinux, firewall, failed logins")
+    CONTENT+=("  ${C_BWHT}9${C_RESET} Terminal   tmux, screen, shell sessions")
+    CONTENT+=("")
+    CONTENT+=("  ${C_BCYN}${C_BOLD}Color Legend${C_RESET}")
+    CONTENT+=("  ─────────────────────────────────────────")
+    CONTENT+=("  ${C_BRED}Red${C_RESET}          Error, failure, critical, expired")
+    CONTENT+=("  ${C_BYEL}Yellow${C_RESET}       Warning, deprecation")
+    CONTENT+=("  ${C_BGRN}Green${C_RESET}        Running, active, success, connected")
+    CONTENT+=("  ${C_BMAG}Magenta${C_RESET}      Removed, denied, rejected, refused")
+    CONTENT+=("  ${C_BCYN}Cyan${C_RESET}         Info, headings, identifiers")
+    CONTENT+=("  ${C_DIM}Dim${C_RESET}          Inactive, stopped, not available")
+    CONTENT+=("")
+    CONTENT+=("  ${C_DIM}Press any key to return to dashboard...${C_RESET}")
+
+    _draw_tabs
+    _draw_content
+    _draw_status
+
+    IFS= read -rsn1 _ 2>/dev/null
+    FORCE_REFRESH=1
+    _load_tab
+    FORCE_REFRESH=0
+}
+
 _select_cert_target() {
     local input=""
     _fill_line $((ROWS - 2)) "$BG_MAG$C_BWHT$C_BOLD" \
@@ -1139,14 +1182,30 @@ _show_loading() {
     printf "%s%s%s" "$BG_BLU$C_BWHT$C_BOLD" "$msg" "$C_RESET"
 }
 
+_get_cache_ttl() {
+    case "$1" in
+        0) echo 30 ;;  # System - moderate refresh
+        1) echo 20 ;;  # Services
+        2) echo 10 ;;  # Logs - more frequent
+        3) echo 30 ;;  # Network
+        4) echo 10 ;;  # Processes - more frequent
+        5) echo 60 ;;  # Certs - expensive, rarely changes
+        6) echo 45 ;;  # Storage
+        7) echo 60 ;;  # Security
+        8) echo 15 ;;  # Terminal
+        *) echo 15 ;;
+    esac
+}
+
 _load_tab() {
     local force=${FORCE_REFRESH:-0}
     local now
     now=$(date +%s)
     local cached_time=${TAB_CACHE_TIME[$ACTIVE_TAB]:-0}
+    local ttl
+    ttl=$(_get_cache_ttl "$ACTIVE_TAB")
 
-    # Use cache if data is less than 15 seconds old (unless forced)
-    if [ "$force" -eq 0 ] && [ "$((now - cached_time))" -lt 15 ] && [ -n "${TAB_CACHE[$ACTIVE_TAB]:-}" ]; then
+    if [ "$force" -eq 0 ] && [ "$((now - cached_time))" -lt "$ttl" ] && [ -n "${TAB_CACHE[$ACTIVE_TAB]:-}" ]; then
         IFS=$'\x01' read -ra CONTENT <<< "${TAB_CACHE[$ACTIVE_TAB]}"
         [ -n "$FILTER" ] && _filter_content
         return
@@ -1231,6 +1290,7 @@ _handle_input() {
 
     case "$key" in
         q|Q) return 1 ;;
+        "?"|h) _show_help; return 0 ;;
         /) FILTERING=1; FILTER="" ;;
         l|L)
             if [ "$ACTIVE_TAB" -eq 2 ]; then
