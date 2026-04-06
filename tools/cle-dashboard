@@ -62,7 +62,7 @@ _tui_init() {
     BX_TLD="╔" BX_TRD="╗" BX_BLD="╚" BX_BRD="╝"
     BX_HD="═" BX_VD="║"
 
-    TABS=("System" "Services" "Logs" "Network" "Processes" "Certs" "Storage" "Security")
+    TABS=("System" "Services" "Logs" "Network" "Processes" "Certs" "Storage" "Security" "Terminal")
 
     # Tab data cache (indexed by tab number)
     declare -A TAB_CACHE
@@ -142,7 +142,7 @@ _progress_bar() {
 
 _draw_tabs() {
     local x=0 i label
-    local icons=("◈" "⚙" "📋" "🌐" "⚡" "🔒" "💾" "🛡")
+    local icons=("◈" "⚙" "📋" "🌐" "⚡" "🔒" "💾" "🛡" "🖥")
 
     # Title line (row 0)
     _goto 0 0
@@ -209,9 +209,9 @@ _draw_status() {
         _fill_line $((ROWS - 2)) "$BG_BLU$C_BWHT$C_BOLD" \
             " ◈ ${TABS[$ACTIVE_TAB]}  │  $((SCROLL+1))-${end} of ${total} lines${filter_hint}${logfile_hint}"
     fi
-    local keys=" 1-8:Tab  ↑↓/jk:Scroll  PgUp/PgDn  r:Refresh  /:Filter  q:Quit"
-    [ "$ACTIVE_TAB" -eq 2 ] && keys=" 1-8:Tab  ↑↓/jk:Scroll  L:LogFile  r:Refresh  /:Filter  q:Quit"
-    [ "$ACTIVE_TAB" -eq 5 ] && keys=" 1-8:Tab  ↑↓/jk:Scroll  P:Add Port  r:Refresh  /:Filter  q:Quit"
+    local keys=" 1-9:Tab  ↑↓/jk:Scroll  PgUp/PgDn  r:Refresh  /:Filter  q:Quit"
+    [ "$ACTIVE_TAB" -eq 2 ] && keys=" 1-9:Tab  ↑↓/jk:Scroll  L:LogFile  r:Refresh  /:Filter  q:Quit"
+    [ "$ACTIVE_TAB" -eq 5 ] && keys=" 1-9:Tab  ↑↓/jk:Scroll  P:Add Port  r:Refresh  /:Filter  q:Quit"
     _fill_line $((ROWS - 1)) "$BG_BLK$C_CYN" "$keys"
 }
 
@@ -954,6 +954,95 @@ _collect_security() {
     fi
 }
 
+_collect_terminal() {
+    CONTENT=()
+    local os
+    os=$(uname -s)
+
+    # tmux sessions
+    CONTENT+=("== 🖥 TMUX SESSIONS ==")
+    CONTENT+=("")
+    if command -v tmux >/dev/null 2>&1; then
+        local tmux_count=0
+        while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            local sess_name="${line%%:*}"
+            local rest="${line#*:}"
+            local attached=""
+            [[ "$line" == *"(attached)"* ]] && attached=" ${C_BGRN}← attached${C_RESET}"
+            CONTENT+=("  ${C_BCYN}●${C_RESET} ${C_BOLD}${sess_name}${C_RESET} ${rest}${attached}")
+            tmux_count=$((tmux_count + 1))
+        done < <(tmux list-sessions 2>/dev/null)
+
+        if [ $tmux_count -gt 0 ]; then
+            CONTENT+=("")
+            CONTENT+=("  ${C_DIM}── Windows ──${C_RESET}")
+            CONTENT+=("")
+            while IFS= read -r line; do
+                [ -z "$line" ] && continue
+                local active=""
+                [[ "$line" == *"(active)"* ]] && active="${C_BGRN} ← active${C_RESET}"
+                CONTENT+=("    ${C_WHT}$line${C_RESET}${active}")
+            done < <(tmux list-windows -a 2>/dev/null)
+        else
+            CONTENT+=("  ${C_DIM}No tmux sessions running${C_RESET}")
+        fi
+    else
+        CONTENT+=("  ${C_DIM}tmux not installed${C_RESET}")
+    fi
+    CONTENT+=("")
+
+    # screen sessions
+    CONTENT+=("== 📺 SCREEN SESSIONS ==")
+    CONTENT+=("")
+    if command -v screen >/dev/null 2>&1; then
+        local screen_count=0
+        while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            case "$line" in
+                *Attached*) CONTENT+=("  ${C_BGRN}●${C_RESET} $line"); screen_count=$((screen_count + 1)) ;;
+                *Detached*) CONTENT+=("  ${C_BYEL}○${C_RESET} $line"); screen_count=$((screen_count + 1)) ;;
+                *) ;;
+            esac
+        done < <(screen -ls 2>/dev/null)
+        [ $screen_count -eq 0 ] && CONTENT+=("  ${C_DIM}No screen sessions running${C_RESET}")
+    else
+        CONTENT+=("  ${C_DIM}screen not installed${C_RESET}")
+    fi
+    CONTENT+=("")
+
+    # Active TTY/PTY sessions
+    CONTENT+=("== 📟 ACTIVE TERMINALS ==")
+    CONTENT+=("")
+    while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        CONTENT+=("  $line")
+    done < <(who 2>/dev/null)
+    CONTENT+=("")
+
+    # Shell processes
+    CONTENT+=("== 🐚 SHELL PROCESSES ==")
+    CONTENT+=("")
+    while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        CONTENT+=("  $line")
+    done < <(ps aux 2>/dev/null | grep -E '[b]ash|[z]sh|[f]ish|[s]h ' | head -20)
+    CONTENT+=("")
+
+    # Terminal info
+    CONTENT+=("== ⓘ CURRENT TERMINAL ==")
+    CONTENT+=("")
+    CONTENT+=("  TERM:     ${TERM:-unknown}")
+    CONTENT+=("  TTY:      $(tty 2>/dev/null || echo 'N/A')")
+    CONTENT+=("  Size:     ${COLS}x${ROWS}")
+    CONTENT+=("  Colors:   $(tput colors 2>/dev/null || echo '?')")
+    CONTENT+=("  Shell:    ${SHELL:-unknown}")
+    CONTENT+=("  PID:      $$")
+    [ -n "${TMUX:-}" ] && CONTENT+=("  In tmux:  ${C_BGRN}yes${C_RESET}")
+    [ -n "${STY:-}" ] && CONTENT+=("  In screen: ${C_BGRN}yes${C_RESET}")
+    [ -n "${SSH_CONNECTION:-}" ] && CONTENT+=("  SSH from: ${SSH_CONNECTION%% *}")
+}
+
 # ── Log File Selector ────────────────────────────────────────────────────────
 
 _select_logfile() {
@@ -1068,6 +1157,7 @@ _load_tab() {
         5) _collect_certs "$@" ;;
         6) _collect_storage ;;
         7) _collect_security ;;
+        8) _collect_terminal ;;
     esac
 
     # Store in cache
@@ -1181,7 +1271,7 @@ _handle_input() {
             FILTER=""
             _load_tab "$@"
             ;;
-        [1-8])
+        [1-9])
             ACTIVE_TAB=$((key - 1))
             SCROLL=0
             FILTER=""
