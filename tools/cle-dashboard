@@ -62,7 +62,7 @@ _tui_init() {
     BX_TLD="╔" BX_TRD="╗" BX_BLD="╚" BX_BRD="╝"
     BX_HD="═" BX_VD="║"
 
-    TABS=("System" "Services" "Logs" "Network" "Processes" "Certs" "Storage")
+    TABS=("System" "Services" "Logs" "Network" "Processes" "Certs" "Storage" "Security")
 
     # Tab data cache (indexed by tab number)
     declare -A TAB_CACHE
@@ -116,7 +116,7 @@ _print_at() {
 
 _draw_tabs() {
     local x=0 i label
-    local icons=("◈" "⚙" "📋" "🌐" "⚡" "🔒" "💾")
+    local icons=("◈" "⚙" "📋" "🌐" "⚡" "🔒" "💾" "🛡")
 
     # Title line (row 0)
     _goto 0 0
@@ -183,9 +183,9 @@ _draw_status() {
         _fill_line $((ROWS - 2)) "$BG_BLU$C_BWHT$C_BOLD" \
             " ◈ ${TABS[$ACTIVE_TAB]}  │  $((SCROLL+1))-${end} of ${total} lines${filter_hint}${logfile_hint}"
     fi
-    local keys=" 1-7:Tab  ↑↓/jk:Scroll  PgUp/PgDn  r:Refresh  /:Filter  q:Quit"
-    [ "$ACTIVE_TAB" -eq 2 ] && keys=" 1-7:Tab  ↑↓/jk:Scroll  L:LogFile  r:Refresh  /:Filter  q:Quit"
-    [ "$ACTIVE_TAB" -eq 5 ] && keys=" 1-7:Tab  ↑↓/jk:Scroll  P:Add Port  r:Refresh  /:Filter  q:Quit"
+    local keys=" 1-8:Tab  ↑↓/jk:Scroll  PgUp/PgDn  r:Refresh  /:Filter  q:Quit"
+    [ "$ACTIVE_TAB" -eq 2 ] && keys=" 1-8:Tab  ↑↓/jk:Scroll  L:LogFile  r:Refresh  /:Filter  q:Quit"
+    [ "$ACTIVE_TAB" -eq 5 ] && keys=" 1-8:Tab  ↑↓/jk:Scroll  P:Add Port  r:Refresh  /:Filter  q:Quit"
     _fill_line $((ROWS - 1)) "$BG_BLK$C_CYN" "$keys"
 }
 
@@ -223,6 +223,52 @@ _colorize_line() {
             printf "%s%s%s" "$C_BYEL$C_DIM" "$line" "$C_RESET" ;;
         *)
             printf "%s%s%s" "$C_WHT" "$line" "$C_RESET" ;;
+    esac
+}
+
+_colorize_log_line() {
+    local line="$1"
+    local lower
+    lower=$(echo "$line" | tr '[:upper:]' '[:lower:]')
+
+    # Apply lsee-style keyword highlighting inline
+    local result="$line"
+
+    case "$lower" in
+        *error*|*fail*|*fatal*|*panic*|*critical*|*emergency*|*alert*)
+            result=$(echo "$result" | sed \
+                -e "s/[Ee][Rr][Rr][Oo][Rr]/${C_BRED}&${C_RESET}/g" \
+                -e "s/[Ff][Aa][Ii][Ll][A-Za-z]*/${C_BRED}&${C_RESET}/g" \
+                -e "s/[Ff][Aa][Tt][Aa][Ll]/${C_BRED}&${C_RESET}/g" \
+                -e "s/[Pp][Aa][Nn][Ii][Cc]/${C_BRED}&${C_RESET}/g" \
+                -e "s/[Cc][Rr][Ii][Tt][Ii][Cc][Aa][Ll]/${C_BRED}&${C_RESET}/g")
+            printf "%s" "$result" ;;
+        *warn*|*deprecat*)
+            result=$(echo "$result" | sed \
+                -e "s/[Ww][Aa][Rr][Nn][A-Za-z]*/${C_BYEL}&${C_RESET}/g" \
+                -e "s/[Dd][Ee][Pp][Rr][Ee][Cc][Aa][Tt][A-Za-z]*/${C_BYEL}&${C_RESET}/g")
+            printf "%s" "$result" ;;
+        *removed*|*delet*|*reject*|*denied*|*refused*|*timeout*|*expired*)
+            result=$(echo "$result" | sed \
+                -e "s/[Rr][Ee][Mm][Oo][Vv][Ee][Dd]/${C_BMAG}&${C_RESET}/g" \
+                -e "s/[Dd][Ee][Ll][Ee][Tt][A-Za-z]*/${C_BMAG}&${C_RESET}/g" \
+                -e "s/[Rr][Ee][Jj][Ee][Cc][Tt][A-Za-z]*/${C_BMAG}&${C_RESET}/g" \
+                -e "s/[Dd][Ee][Nn][Ii][Ee][Dd]/${C_BMAG}&${C_RESET}/g" \
+                -e "s/[Rr][Ee][Ff][Uu][Ss][Ee][Dd]/${C_BMAG}&${C_RESET}/g" \
+                -e "s/[Tt][Ii][Mm][Ee][Oo][Uu][Tt]/${C_BRED}&${C_RESET}/g" \
+                -e "s/[Ee][Xx][Pp][Ii][Rr][Ee][Dd]/${C_BRED}&${C_RESET}/g")
+            printf "%s" "$result" ;;
+        *connect*|*accept*|*start*|*success*|*running*)
+            result=$(echo "$result" | sed \
+                -e "s/[Cc][Oo][Nn][Nn][Ee][Cc][Tt][A-Za-z]*/${C_BGRN}&${C_RESET}/g" \
+                -e "s/[Aa][Cc][Cc][Ee][Pp][Tt][A-Za-z]*/${C_BGRN}&${C_RESET}/g" \
+                -e "s/[Ss][Uu][Cc][Cc][Ee][Ss][Ss]/${C_BGRN}&${C_RESET}/g" \
+                -e "s/[Ss][Tt][Aa][Rr][Tt][A-Za-z]*/${C_BCYN}&${C_RESET}/g")
+            printf "%s" "$result" ;;
+        *info*|*debug*|*notice*)
+            printf "%s%s%s" "$C_WHT" "$line" "$C_RESET" ;;
+        *)
+            printf "%s" "$line" ;;
     esac
 }
 
@@ -335,16 +381,46 @@ _collect_system() {
             esac
         done < <(free -m 2>/dev/null)
     else
-        local memsize
+        local memsize mem_gb
         memsize=$(sysctl -n hw.memsize 2>/dev/null)
-        [ -n "$memsize" ] && CONTENT+=("  Total RAM: $(( memsize / 1073741824 )) GB")
+        if [ -n "$memsize" ]; then
+            mem_gb=$(( memsize / 1073741824 ))
+            local used_pages free_pages page_size used_mb total_mb pct
+            page_size=$(sysctl -n hw.pagesize 2>/dev/null || echo 4096)
+            # vm_stat gives page counts
+            used_pages=$(vm_stat 2>/dev/null | awk '/Pages active/ {gsub(/\./,"",$3); print $3}')
+            free_pages=$(vm_stat 2>/dev/null | awk '/Pages free/ {gsub(/\./,"",$3); print $3}')
+            if [ -n "$used_pages" ] && [ -n "$free_pages" ]; then
+                used_mb=$(( used_pages * page_size / 1048576 ))
+                total_mb=$(( memsize / 1048576 ))
+                pct=$(( used_mb * 100 / total_mb ))
+                local bar_w=30 filled=$(( pct * 30 / 100 )) bar_str="" j
+                for ((j=0; j<bar_w; j++)); do
+                    if [ $j -lt $filled ]; then bar_str+="█"; else bar_str+="░"; fi
+                done
+                local bar_color="$C_BGRN"
+                [ $pct -gt 50 ] && bar_color="$C_BYEL"
+                [ $pct -gt 80 ] && bar_color="$C_BRED"
+                CONTENT+=("  RAM:  ${bar_color}${bar_str}${C_RESET} ${used_mb}M / ${total_mb}M (${pct}%)")
+            else
+                CONTENT+=("  Total RAM: ${mem_gb} GB")
+            fi
+        fi
     fi
     CONTENT+=("")
 
     CONTENT+=("== 💾 DISK ==")
     CONTENT+=("")
     while IFS= read -r line; do
-        CONTENT+=("  $line")
+        local pct
+        pct=$(echo "$line" | grep -oE '[0-9]+%' | head -1 | tr -d '%')
+        if [ -n "$pct" ] && [ "$pct" -gt 90 ] 2>/dev/null; then
+            CONTENT+=("  ${C_BRED}$line${C_RESET}")
+        elif [ -n "$pct" ] && [ "$pct" -gt 70 ] 2>/dev/null; then
+            CONTENT+=("  ${C_BYEL}$line${C_RESET}")
+        else
+            CONTENT+=("  $line")
+        fi
     done < <(df -h / /home /tmp /var 2>/dev/null | sort -u)
     CONTENT+=("")
 
@@ -413,60 +489,65 @@ _collect_services() {
 
 _collect_logs() {
     CONTENT=()
-    local os
+    local os logfile=""
     os=$(uname -s)
 
-    # Custom log file mode
-    if [ -n "$LOG_FILE" ] && [ -f "$LOG_FILE" ]; then
-        CONTENT+=("== LOG FILE: $LOG_FILE ==")
-        CONTENT+=("  (Press L to change file, R to refresh)")
-        CONTENT+=("")
-        while IFS= read -r line; do
-            CONTENT+=("$line")
-        done < <(tail -200 "$LOG_FILE" 2>/dev/null)
-        return
+    # Determine log source: custom > maillog > messages > syslog > system.log
+    if [ -n "$LOG_FILE" ] && [ -r "$LOG_FILE" ]; then
+        logfile="$LOG_FILE"
+    elif [ -r /var/log/maillog ]; then
+        logfile="/var/log/maillog"
+    elif [ -r /var/log/messages ]; then
+        logfile="/var/log/messages"
+    elif [ -r /var/log/syslog ]; then
+        logfile="/var/log/syslog"
+    elif [ -r /var/log/system.log ]; then
+        logfile="/var/log/system.log"
     fi
 
-    CONTENT+=("== 📋 SYSTEM LOGS  (Press L to select a log file) ==")
-    CONTENT+=("")
-
-    if [ "$os" = "Linux" ]; then
+    if [ -n "$logfile" ]; then
+        local line_count
+        line_count=$(wc -l < "$logfile" 2>/dev/null | tr -d ' ')
+        CONTENT+=("== 📋 LOG: ${logfile}  (${line_count} lines) ==")
+        CONTENT+=("  ${C_DIM}Press ${C_BYEL}L${C_RESET}${C_DIM} to change file  │  ${C_BYEL}R${C_RESET}${C_DIM} to refresh${C_RESET}")
+        CONTENT+=("")
         while IFS= read -r line; do
-            CONTENT+=("$line")
-        done < <(journalctl --no-pager -n 100 --output=short 2>/dev/null || \
-                 tail -100 /var/log/syslog 2>/dev/null || \
-                 tail -100 /var/log/messages 2>/dev/null || \
-                 echo "No log source available")
-    elif [ "$os" = "Darwin" ]; then
-        # Use /var/log/system.log or install.log instead of slow `log show`
-        local logfile=""
-        for lf in /var/log/system.log /var/log/install.log /var/log/wifi.log; do
-            [ -r "$lf" ] && { logfile="$lf"; break; }
-        done
-        if [ -n "$logfile" ]; then
-            CONTENT+=("  (Source: $logfile)")
-            CONTENT+=("")
+            CONTENT+=("$(_colorize_log_line "$line")")
+        done < <(tail -200 "$logfile" 2>/dev/null)
+    else
+        CONTENT+=("== 📋 SYSTEM LOGS ==")
+        CONTENT+=("")
+        if [ "$os" = "Linux" ]; then
             while IFS= read -r line; do
-                CONTENT+=("$line")
-            done < <(tail -100 "$logfile" 2>/dev/null)
-        else
+                CONTENT+=("$(_colorize_log_line "$line")")
+            done < <(journalctl --no-pager -n 100 --output=short 2>/dev/null || echo "No log source available")
+        elif [ "$os" = "Darwin" ]; then
             while IFS= read -r line; do
-                CONTENT+=("$line")
+                CONTENT+=("$(_colorize_log_line "$line")")
             done < <(log show --last 1m --style compact 2>/dev/null | tail -50)
         fi
     fi
 
     CONTENT+=("")
-    CONTENT+=("== AVAILABLE LOG FILES ==")
+    CONTENT+=("== 📁 AVAILABLE LOG FILES ==")
     CONTENT+=("")
     local lf
-    for lf in /var/log/syslog /var/log/messages /var/log/auth.log /var/log/kern.log \
-               /var/log/dmesg /var/log/secure /var/log/cron /var/log/boot.log \
+    for lf in /var/log/maillog /var/log/messages /var/log/syslog \
+               /var/log/auth.log /var/log/secure /var/log/kern.log \
+               /var/log/dmesg /var/log/cron /var/log/boot.log \
                /var/log/system.log /var/log/install.log /var/log/wifi.log \
                /var/log/httpd/access_log /var/log/httpd/error_log \
                /var/log/nginx/access.log /var/log/nginx/error.log \
-               /var/log/audit/audit.log; do
-        [ -r "$lf" ] && CONTENT+=("  ${C_BGRN}●${C_RESET} $lf  ($(du -h "$lf" 2>/dev/null | cut -f1))")
+               /var/log/audit/audit.log /var/log/yum.log /var/log/dnf.log; do
+        if [ -r "$lf" ]; then
+            local sz
+            sz=$(du -h "$lf" 2>/dev/null | cut -f1)
+            if [ "$lf" = "$logfile" ]; then
+                CONTENT+=("  ${C_BCYN}▶${C_RESET} ${C_BCYN}${lf}${C_RESET}  (${sz}) ${C_BGRN}← active${C_RESET}")
+            else
+                CONTENT+=("  ${C_BGRN}●${C_RESET} $lf  (${sz})")
+            fi
+        fi
     done
     CONTENT+=("")
     CONTENT+=("  Press ${C_BYEL}L${C_RESET} to enter a log file path for streaming")
@@ -737,6 +818,122 @@ _collect_storage() {
     fi
 }
 
+_collect_security() {
+    CONTENT=()
+    local os
+    os=$(uname -s)
+
+    CONTENT+=("== 🛡 SECURITY OVERVIEW ==")
+    CONTENT+=("")
+
+    # SELinux status (Linux)
+    if [ "$os" = "Linux" ]; then
+        if command -v getenforce >/dev/null 2>&1; then
+            local se_status
+            se_status=$(getenforce 2>/dev/null)
+            case "$se_status" in
+                Enforcing) CONTENT+=("  ${C_BGRN}●${C_RESET} SELinux: ${C_BGRN}Enforcing${C_RESET}") ;;
+                Permissive) CONTENT+=("  ${C_BYEL}●${C_RESET} SELinux: ${C_BYEL}Permissive${C_RESET}") ;;
+                *) CONTENT+=("  ${C_BRED}●${C_RESET} SELinux: ${C_BRED}${se_status:-Disabled}${C_RESET}") ;;
+            esac
+        else
+            CONTENT+=("  ${C_DIM}SELinux: not installed${C_RESET}")
+        fi
+        CONTENT+=("")
+    fi
+
+    # Firewall status
+    CONTENT+=("── 🔥 Firewall ──")
+    CONTENT+=("")
+    if [ "$os" = "Linux" ]; then
+        if command -v firewall-cmd >/dev/null 2>&1; then
+            local fw_state
+            fw_state=$(firewall-cmd --state 2>/dev/null)
+            if [ "$fw_state" = "running" ]; then
+                CONTENT+=("  ${C_BGRN}●${C_RESET} firewalld: running")
+                local zone
+                zone=$(firewall-cmd --get-default-zone 2>/dev/null)
+                CONTENT+=("  Default zone: $zone")
+                CONTENT+=("")
+                CONTENT+=("  Active rules:")
+                while IFS= read -r line; do
+                    CONTENT+=("    $line")
+                done < <(firewall-cmd --list-all 2>/dev/null | head -15)
+            else
+                CONTENT+=("  ${C_BRED}●${C_RESET} firewalld: ${fw_state:-not running}")
+            fi
+        elif command -v iptables >/dev/null 2>&1; then
+            local rules
+            rules=$(iptables -L -n 2>/dev/null | wc -l | tr -d ' ')
+            CONTENT+=("  iptables: $rules rules")
+            while IFS= read -r line; do
+                CONTENT+=("    $line")
+            done < <(iptables -L -n 2>/dev/null | head -20)
+        elif command -v ufw >/dev/null 2>&1; then
+            while IFS= read -r line; do
+                CONTENT+=("  $line")
+            done < <(ufw status 2>/dev/null | head -15)
+        fi
+    elif [ "$os" = "Darwin" ]; then
+        local pf_status
+        pf_status=$(/usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate 2>/dev/null)
+        if echo "$pf_status" | grep -qi "enabled"; then
+            CONTENT+=("  ${C_BGRN}●${C_RESET} macOS Firewall: enabled")
+        else
+            CONTENT+=("  ${C_BYEL}●${C_RESET} macOS Firewall: ${pf_status:-unknown}")
+        fi
+    fi
+    CONTENT+=("")
+
+    # Failed SSH logins
+    CONTENT+=("── 🔑 Recent Failed Logins ──")
+    CONTENT+=("")
+    if [ "$os" = "Linux" ]; then
+        local fail_count=0
+        while IFS= read -r line; do
+            CONTENT+=("  ${C_BYEL}⚠${C_RESET} $line")
+            fail_count=$((fail_count + 1))
+        done < <(journalctl -u sshd --no-pager -n 50 2>/dev/null | grep -i "failed\|invalid" | tail -15)
+        if [ $fail_count -eq 0 ]; then
+            while IFS= read -r line; do
+                CONTENT+=("  ${C_BYEL}⚠${C_RESET} $line")
+                fail_count=$((fail_count + 1))
+            done < <(grep -i "failed\|invalid" /var/log/secure 2>/dev/null | tail -15)
+        fi
+        [ $fail_count -eq 0 ] && CONTENT+=("  ${C_BGRN}✓ No recent failed logins${C_RESET}")
+    elif [ "$os" = "Darwin" ]; then
+        local fail_count=0
+        while IFS= read -r line; do
+            CONTENT+=("  ${C_BYEL}⚠${C_RESET} $line")
+            fail_count=$((fail_count + 1))
+        done < <(last -5 2>/dev/null | grep -v "^$" | head -10)
+        [ $fail_count -eq 0 ] && CONTENT+=("  ${C_DIM}No login data available${C_RESET}")
+    fi
+    CONTENT+=("")
+
+    # Last successful logins
+    CONTENT+=("── 👤 Recent Logins ──")
+    CONTENT+=("")
+    while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        CONTENT+=("  $line")
+    done < <(last -10 2>/dev/null | head -10)
+    CONTENT+=("")
+
+    # Open SUID/SGID files (security audit)
+    if [ "$os" = "Linux" ]; then
+        CONTENT+=("── 📝 Sudoers ──")
+        CONTENT+=("")
+        while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            case "$line" in
+                \#*) ;;
+                *) CONTENT+=("  $line") ;;
+            esac
+        done < <(cat /etc/sudoers 2>/dev/null | grep -v '^#' | grep -v '^$' | head -15)
+    fi
+}
+
 # ── Log File Selector ────────────────────────────────────────────────────────
 
 _select_logfile() {
@@ -850,6 +1047,7 @@ _load_tab() {
         4) _collect_processes ;;
         5) _collect_certs "$@" ;;
         6) _collect_storage ;;
+        7) _collect_security ;;
     esac
 
     # Store in cache
@@ -963,7 +1161,7 @@ _handle_input() {
             FILTER=""
             _load_tab "$@"
             ;;
-        [1-7])
+        [1-8])
             ACTIVE_TAB=$((key - 1))
             SCROLL=0
             FILTER=""
