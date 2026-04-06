@@ -567,47 +567,90 @@ _collect_processes() {
     fi
 }
 
+_check_port_open() {
+    local host="$1" port="$2"
+    if command -v nc >/dev/null 2>&1; then
+        nc -z -w2 "$host" "$port" 2>/dev/null
+    elif command -v ncat >/dev/null 2>&1; then
+        ncat -z -w2 "$host" "$port" 2>/dev/null
+    else
+        (echo >/dev/tcp/"$host"/"$port") 2>/dev/null
+    fi
+}
+
+_get_starttls_flag() {
+    local port="$1"
+    case "$port" in
+        25|587)  echo "-starttls smtp" ;;
+        143)     echo "-starttls imap" ;;
+        110)     echo "-starttls pop3" ;;
+        21)      echo "-starttls ftp" ;;
+        *)       echo "" ;;
+    esac
+}
+
 _collect_certs() {
     CONTENT=()
     local targets=("$@")
 
-    # Merge user-selected cert targets
     if [ ${#CERT_TARGETS[@]} -gt 0 ]; then
         targets+=("${CERT_TARGETS[@]}")
     fi
 
     if [ ${#targets[@]} -eq 0 ]; then
-        targets=("localhost:443")
         local port
         for port in 443 8443 636 993 995; do
-            if (echo >/dev/tcp/localhost/"$port") 2>/dev/null; then
+            if _check_port_open localhost "$port"; then
                 targets+=("localhost:$port")
             fi
         done
+        [ ${#targets[@]} -eq 0 ] && targets=("localhost:443")
     fi
 
+    # Deduplicate targets
+    local unique=() seen="" t
+    for t in "${targets[@]}"; do
+        case "$seen" in
+            *"|$t|"*) ;;
+            *) unique+=("$t"); seen="$seen|$t|" ;;
+        esac
+    done
+    targets=("${unique[@]}")
+
     CONTENT+=("== 🔒 SSL/TLS CERTIFICATES ==")
-    CONTENT+=("  Press ${C_BYEL}P${C_RESET} to add a host:port for certificate check")
+    CONTENT+=("  Press ${C_BYEL}P${C_RESET} to add a host:port  │  ${#targets[@]} target(s) configured")
     CONTENT+=("")
 
-    local target host port_s
+    local target host port_s starttls_flag
     for target in "${targets[@]}"; do
         if [[ "$target" != *:* ]]; then
             target="$target:443"
         fi
         host="${target%:*}"
         port_s="${target##*:}"
+        starttls_flag=$(_get_starttls_flag "$port_s")
 
-        CONTENT+=("── $target ──")
+        CONTENT+=("── 🔐 $target ──")
         CONTENT+=("")
 
-        local cert_out
-        cert_out=$(echo | openssl s_client -connect "$target" -servername "$host" 2>/dev/null | openssl x509 -noout -subject -issuer -dates -serial -ext subjectAltName 2>/dev/null)
+        if ! _check_port_open "$host" "$port_s"; then
+            CONTENT+=("  ${C_BRED}✗ Port $port_s is not reachable on $host${C_RESET}")
+            CONTENT+=("")
+            continue
+        fi
+
+        local cert_out _timeout_cmd=""
+        if command -v timeout >/dev/null 2>&1; then
+            _timeout_cmd="timeout 5"
+        elif command -v gtimeout >/dev/null 2>&1; then
+            _timeout_cmd="gtimeout 5"
+        fi
+        cert_out=$(${_timeout_cmd} bash -c "echo | openssl s_client -connect '$target' -servername '$host' $starttls_flag 2>/dev/null" | openssl x509 -noout -subject -issuer -dates -serial -ext subjectAltName 2>/dev/null)
         if [ -n "$cert_out" ]; then
             while IFS= read -r line; do
                 case "$line" in
-                    *subject*) CONTENT+=("  ${C_BCYN}Subject:${C_RESET}  ${line#*= }") ;;
-                    *issuer*)  CONTENT+=("  ${C_BCYN}Issuer:${C_RESET}   ${line#*= }") ;;
+                    *subject*) CONTENT+=("  ${C_BCYN}Subject:${C_RESET}    ${line#*= }") ;;
+                    *issuer*)  CONTENT+=("  ${C_BCYN}Issuer:${C_RESET}     ${line#*= }") ;;
                     *notBefore*) CONTENT+=("  ${C_BCYN}Valid From:${C_RESET} ${line#*=}") ;;
                     *notAfter*)
                         local expiry="${line#*=}"
@@ -617,23 +660,26 @@ _collect_certs() {
                         if [ "$exp_epoch" -gt 0 ] 2>/dev/null; then
                             days_left=$(( (exp_epoch - now_epoch) / 86400 ))
                             if [ "$days_left" -lt 0 ]; then
-                                CONTENT+=("  ${C_BRED}Expires:${C_RESET}  $expiry ${C_BRED}(EXPIRED!)${C_RESET}")
+                                CONTENT+=("  ${C_BRED}Expires:${C_RESET}    $expiry ${C_BRED}⚠ EXPIRED!${C_RESET}")
                             elif [ "$days_left" -lt 30 ]; then
-                                CONTENT+=("  ${C_BYEL}Expires:${C_RESET}  $expiry ${C_BYEL}(${days_left}d left)${C_RESET}")
+                                CONTENT+=("  ${C_BYEL}Expires:${C_RESET}    $expiry ${C_BYEL}⚠ ${days_left}d left${C_RESET}")
                             else
-                                CONTENT+=("  ${C_BGRN}Expires:${C_RESET}  $expiry ${C_BGRN}(${days_left}d left)${C_RESET}")
+                                CONTENT+=("  ${C_BGRN}Expires:${C_RESET}    $expiry ${C_BGRN}✓ ${days_left}d left${C_RESET}")
                             fi
                         else
-                            CONTENT+=("  ${C_BCYN}Expires:${C_RESET}  $expiry")
+                            CONTENT+=("  ${C_BCYN}Expires:${C_RESET}    $expiry")
                         fi
                         ;;
-                    *serial*)  CONTENT+=("  ${C_BCYN}Serial:${C_RESET}   ${line#*=}") ;;
-                    *DNS:*)    CONTENT+=("  ${C_BCYN}SANs:${C_RESET}     ${line##*DNS:}") ;;
+                    *serial*)  CONTENT+=("  ${C_BCYN}Serial:${C_RESET}     ${line#*=}") ;;
+                    *DNS:*)    CONTENT+=("  ${C_BCYN}SANs:${C_RESET}       ${line##*DNS:}") ;;
                 esac
             done <<< "$cert_out"
         else
-            CONTENT+=("  ${C_BRED}Could not retrieve certificate${C_RESET}")
-            CONTENT+=("  Connection refused or no SSL on $target")
+            if [ -n "$starttls_flag" ]; then
+                CONTENT+=("  ${C_BYEL}⚠ No SSL certificate (STARTTLS attempted for port $port_s)${C_RESET}")
+            else
+                CONTENT+=("  ${C_BYEL}⚠ No SSL certificate on this port${C_RESET}")
+            fi
         fi
         CONTENT+=("")
     done
