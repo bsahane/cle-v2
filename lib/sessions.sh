@@ -153,12 +153,13 @@ lssh () (
 	_clepak tar
 
 	# SSH multiplexing for faster repeated connections
+	# Uses %C (hash of %l%h%p%r) to keep socket path short for long hostnames
 	local _MUX_OPTS=""
 	if [ "${CLE_SSH_MUX:-1}" = 1 ]; then
-		local _MUX_DIR="$HOME/.ssh/mux"
+		local _MUX_DIR="/tmp/.ssh-mux-$USER"
 		mkdir -p "$_MUX_DIR" 2>/dev/null
 		chmod 700 "$_MUX_DIR" 2>/dev/null
-		_MUX_OPTS="-o ControlMaster=auto -o ControlPath=$_MUX_DIR/%r@%h:%p -o ControlPersist=10m"
+		_MUX_OPTS="-o ControlMaster=auto -o ControlPath=$_MUX_DIR/%C -o ControlPersist=10m"
 	fi
 
 	command ssh -t $_MUX_OPTS "$@" "
