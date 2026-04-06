@@ -301,5 +301,11 @@ hhi () {
 	fi
 }
 
+## `hgrep <pattern>` - quick grep through rich history
+hgrep () {
+	[ -z "$1" ] && { echo "Usage: hgrep <pattern>"; return 1; }
+	grep --color=auto -i "$*" "$CLE_HIST" | tail -30
+}
+
 # zsh: allow # comments on command line
 [ "$ZSH_NAME" ] && '#' () { true; }

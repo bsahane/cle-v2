@@ -54,3 +54,44 @@ gistash () { git stash push -m "${*:-WIP}"; }
 
 ## `gipop`           - git stash pop
 gipop () { git stash pop; }
+
+## `giclone <url> [dir]` - git clone with depth option
+giclone () { git clone --depth 1 "$@"; }
+
+## `gitag [tag] [msg]` - create/list tags
+gitag () {
+	if [ -z "$1" ]; then
+		git tag -l --sort=-version:refname | head -20
+	elif [ -n "$2" ]; then
+		git tag -a "$1" -m "$2"
+	else
+		git tag "$1"
+	fi
+}
+
+## `giundo`          - undo last commit (keep changes staged)
+giundo () { git reset --soft HEAD~1; }
+
+## `giamend`         - amend last commit (no edit)
+giamend () { git add -A && git commit --amend --no-edit; }
+
+## `giclean`         - remove untracked files (interactive)
+giclean () { git clean -id; }
+
+## `giblame <file>`  - shortened blame output
+giblame () { git blame --color-by-age --color-lines "$@"; }
+
+## `giremote`        - show remotes with URLs
+giremote () { git remote -v; }
+
+## `giwho`           - show contributors sorted by commits
+giwho () { git shortlog -sn --no-merges; }
+
+## `gisize`          - show repo size stats
+gisize () {
+	echo "Repo size:"
+	git count-objects -vH 2>/dev/null || git count-objects -v
+	echo ""
+	echo "Files: $(git ls-files | wc -l | tr -d ' ')"
+	echo "Commits: $(git rev-list --count HEAD 2>/dev/null || echo 'N/A')"
+}

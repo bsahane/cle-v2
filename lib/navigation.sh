@@ -7,6 +7,32 @@
 .. () { cd ..; }
 ... () { cd ../..; }
 
+## `mkcd <dir>` - create directory and cd into it
+mkcd () { mkdir -p "$1" && cd "$1"; }
+
+## `take <dir>` - mkcd alias (Oh-My-Zsh compat)
+take () { mkcd "$@"; }
+
+## `bd <parent>` - jump back to a parent directory by name
+bd () {
+	local OLD=$PWD NEW
+	[ -z "$1" ] && { echo "Usage: bd <parent_dir_name>"; return 1; }
+	NEW="${PWD%/$1/*}/$1"
+	[ "$NEW" = "$OLD" ] && { echo "'$1' not found in path"; return 1; }
+	cd "$NEW"
+}
+
+## `up [n]` - go up n directories (default: 1)
+up () {
+	local D=""
+	local N=${1:-1}
+	while [ "$N" -gt 0 ]; do
+		D="../$D"
+		N=$((N - 1))
+	done
+	cd "$D"
+}
+
 ## `xx`  - bookmark current directory
 ## `cx`  - cd to bookmarked directory
 xx () { _XX=$PWD; echo "path bookmark: $_XX"; _clerh @ "$PWD" "xx"; }

@@ -1,0 +1,109 @@
+##
+## ** mod-strings: Text manipulation utilities **
+#* version: 2026-04-06
+
+## `upper [text]` - convert to uppercase (text or stdin)
+upper () {
+	if [ -n "$*" ]; then
+		echo "$*" | tr '[:lower:]' '[:upper:]'
+	else
+		tr '[:lower:]' '[:upper:]'
+	fi
+}
+
+## `lower [text]` - convert to lowercase (text or stdin)
+lower () {
+	if [ -n "$*" ]; then
+		echo "$*" | tr '[:upper:]' '[:lower:]'
+	else
+		tr '[:upper:]' '[:lower:]'
+	fi
+}
+
+## `trim [text]` - strip leading/trailing whitespace
+trim () {
+	if [ -n "$*" ]; then
+		echo "$*" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
+	else
+		sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
+	fi
+}
+
+## `count <pattern> [file]` - count pattern occurrences
+count () {
+	local P=${1:?Usage: count <pattern> [file]}
+	shift
+	grep -c "$P" "${@:--}" 2>/dev/null
+}
+
+## `lines [file]` - count lines in file or stdin
+lines () {
+	if [ -n "$1" ] && [ -f "$1" ]; then
+		wc -l < "$1" | tr -d ' '
+	else
+		wc -l | tr -d ' '
+	fi
+}
+
+## `words [file]` - count words in file or stdin
+words () {
+	if [ -n "$1" ] && [ -f "$1" ]; then
+		wc -w < "$1" | tr -d ' '
+	else
+		wc -w | tr -d ' '
+	fi
+}
+
+## `randstr [len]` - generate random alphanumeric string (default: 32)
+randstr () {
+	local L=${1:-32}
+	LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c "$L"
+	echo
+}
+
+## `randpw [len]` - generate random password with special chars (default: 20)
+randpw () {
+	local L=${1:-20}
+	LC_ALL=C tr -dc 'A-Za-z0-9!@#$%^&*()_+-=' < /dev/urandom | head -c "$L"
+	echo
+}
+
+## `runx <n> <cmd>` - run command n times
+runx () {
+	local N=${1:?Usage: runx <n> <command>}
+	shift
+	local I=1
+	while [ "$I" -le "$N" ]; do
+		echo "$_CL--- Run $I/$N ---$_CN"
+		eval "$@"
+		I=$((I + 1))
+	done
+}
+
+## `watchit <sec> <cmd>` - run command every N seconds (like watch but portable)
+watchit () {
+	local SEC=${1:?Usage: watchit <seconds> <command>}
+	shift
+	while true; do
+		clear
+		echo "$_CL=== $(date) | Every ${SEC}s ===$_CN"
+		echo ""
+		eval "$@"
+		sleep "$SEC"
+	done
+}
+
+## `diffwords <f1> <f2>` - word-level diff of two files
+diffwords () {
+	[ $# -ne 2 ] && { echo "Usage: diffwords <file1> <file2>"; return 1; }
+	diff --color=auto <(tr ' ' '\n' < "$1") <(tr ' ' '\n' < "$2")
+}
+
+## `joinlines [delim]` - join stdin lines with delimiter (default: comma)
+joinlines () {
+	local D="${1:-,}"
+	paste -sd "$D" -
+}
+
+## `uniqcount` - sort and count unique lines from stdin
+uniqcount () { sort | uniq -c | sort -rn; }

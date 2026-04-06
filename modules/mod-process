@@ -1,0 +1,76 @@
+##
+## ** mod-process: Process management utilities **
+#* version: 2026-04-06
+
+## `pstree [pid]` - show process tree (portable)
+pstree () {
+	if command -v pstree >/dev/null 2>&1; then
+		command pstree "$@"
+	else
+		ps axjf 2>/dev/null || ps -eo user,pid,ppid,pgid,command
+	fi
+}
+
+## `pof <name>` - find processes by name
+pof () {
+	local N=${1:?Usage: pof <process_name>}
+	echo "$_CL=== Processes matching '$N' ===$_CN"
+	ps aux | head -1
+	ps aux | grep -i "$N" | grep -v "grep.*$N"
+}
+
+## `killport <port>` - kill process on a specific port
+killport () {
+	local P=${1:?Usage: killport <port>}
+	local PID
+	if [ "$(uname)" = "Darwin" ]; then
+		PID=$(lsof -ti :"$P" 2>/dev/null)
+	else
+		PID=$(ss -tlnp "sport = :$P" 2>/dev/null | awk 'NR>1{gsub(/.*pid=/,""); gsub(/,.*/,""); print}')
+	fi
+	if [ -n "$PID" ]; then
+		echo "Killing PID $PID on port $P"
+		kill -9 $PID 2>/dev/null
+	else
+		echo "No process found on port $P"
+	fi
+}
+
+## `zombies` - find zombie processes
+zombies () {
+	echo "$_CL=== Zombie Processes ===$_CN"
+	local Z
+	Z=$(ps aux | awk '$8 ~ /Z/ {print}')
+	if [ -n "$Z" ]; then
+		ps aux | head -1
+		echo "$Z"
+	else
+		echo "No zombie processes found"
+	fi
+}
+
+## `waitfor <pid>` - wait for a process to finish and notify
+waitfor () {
+	local PID=${1:?Usage: waitfor <pid>}
+	if ! kill -0 "$PID" 2>/dev/null; then
+		echo "PID $PID not running"
+		return 1
+	fi
+	echo "Waiting for PID $PID..."
+	while kill -0 "$PID" 2>/dev/null; do
+		sleep 1
+	done
+	echo "PID $PID finished"
+	typeset -f _cle_notify >/dev/null 2>&1 && _cle_notify "waitfor" "0" "0"
+}
+
+## `cpulimit <percent> <command>` - run command with CPU limit (needs cpulimit)
+cpulimit () {
+	if ! command -v cpulimit >/dev/null 2>&1; then
+		echo "cpulimit not installed"
+		return 1
+	fi
+	local PCT=${1:?Usage: cpulimit <percent> <command>}
+	shift
+	cpulimit -l "$PCT" -- "$@"
+}

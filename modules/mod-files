@@ -1,0 +1,105 @@
+##
+## ** mod-files: File manipulation utilities **
+#* version: 2026-04-06
+
+## `size <file|dir>` - human-readable size of file or directory
+size () {
+	local T="${1:-.}"
+	if [ -d "$T" ]; then
+		du -sh "$T" | awk '{print $1}'
+	elif [ -f "$T" ]; then
+		ls -lh "$T" | awk '{print $5}'
+	else
+		echo "Not found: $T"
+	fi
+}
+
+## `biggest [n] [dir]` - show n largest files (default: 10 in current dir)
+biggest () {
+	local N=${1:-10}
+	local D="${2:-.}"
+	echo "$_CL=== $N Largest Files in $D ===$_CN"
+	find "$D" -type f -exec ls -lh {} \; 2>/dev/null | sort -k5 -rh | head -n "$N" | awk '{printf "  %-8s %s\n", $5, $NF}'
+}
+
+## `newest [n] [dir]` - show n most recently modified files (default: 10)
+newest () {
+	local N=${1:-10}
+	local D="${2:-.}"
+	echo "$_CL=== $N Newest Files in $D ===$_CN"
+	find "$D" -type f -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -n "$N" | awk '{print $2}' \
+		|| find "$D" -type f -exec stat -f '%m %N' {} \; 2>/dev/null | sort -rn | head -n "$N" | awk '{print $2}'
+}
+
+## `oldest [n] [dir]` - show n oldest files (default: 10)
+oldest () {
+	local N=${1:-10}
+	local D="${2:-.}"
+	echo "$_CL=== $N Oldest Files in $D ===$_CN"
+	find "$D" -type f -printf '%T@ %p\n' 2>/dev/null | sort -n | head -n "$N" | awk '{print $2}' \
+		|| find "$D" -type f -exec stat -f '%m %N' {} \; 2>/dev/null | sort -n | head -n "$N" | awk '{print $2}'
+}
+
+## `empty [dir]` - find empty files and directories
+empty () {
+	local D="${1:-.}"
+	echo "$_CL=== Empty Files ===$_CN"
+	find "$D" -type f -empty 2>/dev/null
+	echo "$_CL=== Empty Directories ===$_CN"
+	find "$D" -type d -empty 2>/dev/null
+}
+
+## `dupes [dir]` - find duplicate files by checksum
+dupes () {
+	local D="${1:-.}"
+	echo "$_CL=== Checking for duplicates in $D ===$_CN"
+	find "$D" -type f -not -empty 2>/dev/null | while read -r F; do
+		if command -v md5sum >/dev/null 2>&1; then
+			md5sum "$F"
+		else
+			md5 -r "$F"
+		fi
+	done | sort | awk 'a[$1]++ { print $2 " (duplicate of hash " $1 ")" }'
+}
+
+## `swap <f1> <f2>` - swap two files
+swap () {
+	[ $# -ne 2 ] && { echo "Usage: swap <file1> <file2>"; return 1; }
+	[ -f "$1" ] || { echo "Not found: $1"; return 1; }
+	[ -f "$2" ] || { echo "Not found: $2"; return 1; }
+	local T
+	T=$(mktemp)
+	mv "$1" "$T" && mv "$2" "$1" && mv "$T" "$2"
+	echo "Swapped: $1 <-> $2"
+}
+
+## `compare <f1> <f2>` - side-by-side file comparison
+compare () {
+	[ $# -ne 2 ] && { echo "Usage: compare <file1> <file2>"; return 1; }
+	if command -v delta >/dev/null 2>&1; then
+		delta "$1" "$2"
+	elif command -v colordiff >/dev/null 2>&1; then
+		colordiff -y "$1" "$2"
+	else
+		diff -y --color=auto "$1" "$2" 2>/dev/null || diff -y "$1" "$2"
+	fi
+}
+
+## `permissions <path>` - show detailed permissions
+permissions () {
+	local P="${1:-.}"
+	if [ "$(uname)" = "Darwin" ]; then
+		ls -lae "$P"
+	else
+		ls -la --color=auto "$P"
+		echo ""
+		stat "$P" 2>/dev/null
+	fi
+}
+
+## `filetypes [dir]` - count files by extension
+filetypes () {
+	local D="${1:-.}"
+	echo "$_CL=== File Types in $D ===$_CN"
+	find "$D" -type f 2>/dev/null | sed 's/.*\.//' | sort | uniq -c | sort -rn | head -20
+}

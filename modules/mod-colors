@@ -1,0 +1,67 @@
+##
+## ** mod-colors: Terminal color display and testing **
+#* version: 2026-04-06
+
+## `colors16` - show basic 16 terminal colors
+colors16 () {
+	echo "$_CL=== 16 ANSI Colors ===$_CN"
+	local C
+	for C in $(seq 0 7); do
+		printf "\e[48;5;${C}m  %3s  \e[0m" "$C"
+	done
+	echo ""
+	for C in $(seq 8 15); do
+		printf "\e[48;5;${C}m  %3s  \e[0m" "$C"
+	done
+	echo ""
+}
+
+## `colors256` - show full 256 color palette
+colors256 () {
+	echo "$_CL=== 256 Color Palette ===$_CN"
+	local C
+	for C in $(seq 0 255); do
+		printf "\e[48;5;${C}m %3s \e[0m" "$C"
+		[ $(( (C + 1) % 16 )) -eq 0 ] && echo ""
+	done
+}
+
+## `truecolor` - test 24-bit truecolor support
+truecolor () {
+	echo "$_CL=== True Color Test ===$_CN"
+	awk 'BEGIN{
+		for (r=0;r<256;r+=4) {
+			printf "\033[48;2;%d;0;0m \033[0m", r
+		}
+		print ""
+		for (g=0;g<256;g+=4) {
+			printf "\033[48;2;0;%d;0m \033[0m", g
+		}
+		print ""
+		for (b=0;b<256;b+=4) {
+			printf "\033[48;2;0;0;%dm \033[0m", b
+		}
+		print ""
+		for (i=0;i<256;i+=4) {
+			printf "\033[48;2;%d;%d;%dm \033[0m", i, i, i
+		}
+		print ""
+	}'
+	echo ""
+	echo "If you see smooth gradients, your terminal supports 24-bit color."
+}
+
+## `colortest` - comprehensive terminal capability test
+colortest () {
+	echo "$_CL=== Terminal Capabilities ===$_CN"
+	echo "TERM=$TERM"
+	echo "Colors: $(tput colors 2>/dev/null || echo 'unknown')"
+	echo ""
+	echo "Attributes:"
+	printf "  \e[1mBold\e[0m  \e[2mDim\e[0m  \e[3mItalic\e[0m  \e[4mUnderline\e[0m  "
+	printf "\e[5mBlink\e[0m  \e[7mReverse\e[0m  \e[8mHidden\e[0m  \e[9mStrike\e[0m\n"
+	echo ""
+	colors16
+	echo ""
+	echo "Run 'colors256' for full palette, 'truecolor' for 24-bit test."
+}

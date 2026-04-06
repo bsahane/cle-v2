@@ -47,7 +47,11 @@ cle-v2/
 │   ├── mod-openshift      # Red Hat OpenShift management (14 functions)
 │   ├── mod-todo           # Universal todolist (ltodo)
 │   ├── mod-backup         # Timestamped backup utilities (bak, bak-list, bak-restore)
-│   └── mod-note           # Quick terminal notes with tagging
+│   ├── mod-note           # Quick terminal notes with tagging
+│   ├── mod-strings        # Text manipulation (upper, lower, trim, repeat, watchit)
+│   ├── mod-files          # File utilities (biggest, newest, dupes, swap, compare)
+│   ├── mod-colors         # Terminal color display (colors16, colors256, truecolor)
+│   └── mod-process        # Process management (pof, killport, zombies, waitfor)
 ├── themes/                # Visual customization
 │   ├── cle-prompt         # Prompt theme presets
 │   └── cle-palette        # Terminal color palettes
@@ -194,6 +198,38 @@ cle ed <target>         Edit config files (tw, cf, bashrc, zshrc, etc.)
 cle starship <cmd>      Starship prompt integration
 ```
 
+## Built-in Aliases (always available, including remote sessions)
+
+### ls family
+| Alias | Command | Purpose |
+|-------|---------|---------|
+| `l` | `ls -lrth` | Long listing, reverse time, human |
+| `la` | `ls -lrthA` | Same + hidden files |
+| `ll` | `ls -lh` | Long listing, human sizes |
+| `lla` | `ls -lhA` | Long listing + hidden |
+| `lS` | `ls -lhS` | Sort by size (largest first) |
+| `lSr` | `ls -lhSr` | Sort by size (smallest first) |
+| `lt` | `ls -lht` | Sort by time (newest first) |
+| `ltr` | `ls -lhtr` | Sort by time (oldest first) |
+| `ld` | `ls -ld */` | Directories only |
+| `l.` | `ls -lhd .[^.]*` | Hidden files only |
+| `l1` | `ls -1` | One per line |
+| `lR` | `ls -lhR` | Recursive listing |
+| `lx` | `ls -lhX` | Sort by extension (Linux) |
+
+### Navigation & File ops
+`mkcd`, `take`, `bd <parent>`, `up [n]`, `md` (mkdir -p), `rd`, `cp -iv`, `mv -iv`
+
+### Utility
+`cls` (clear), `path` (show PATH), `now`, `week`, `timestamp`, `psg <name>`, `topmem`, `topcpu`, `hgrep <pattern>`, `ports`, `myip`, `ping -c5`, `headers`, `tree`
+
+### Git shortcuts
+`g`, `gs` (status), `gl` (log), `gd` (diff), `gp` (pull)
+
+### Platform-specific
+- **Linux**: `free -h`, `lx`, `open` (xdg-open)
+- **macOS**: `flush` (DNS cache), `showfiles`/`hidefiles` (Finder hidden files)
+
 ## Writing Modules
 
 Create a file `modules/mod-<name>` with:
@@ -204,3 +240,40 @@ Create a file `modules/mod-<name>` with:
 Scaffold a new module with: `cle mod new <name>`
 
 Modules are auto-sourced on shell startup and included in remote session packs.
+
+## Module Reference (32 modules)
+
+| Module | Functions | Description |
+|--------|-----------|-------------|
+| mod-ai | ai, ai-cmd, ai-explain, ai-fix | AI-powered command helpers |
+| mod-audit | audit, audit-stats, audit-export | Command audit trail |
+| mod-backup | bak, bak-list, bak-restore, bak-clean | Timestamped backups |
+| mod-cert | lcert, lcert-bulk | SSL/TLS inspection |
+| mod-clip | clip, clpaste, clipfile | Cross-platform clipboard |
+| mod-colors | colors16, colors256, truecolor, colortest | Terminal color display |
+| mod-devtools | port, ports, json, b64e/b64d, calc, weather, cheat, epoch, httpcode | Developer tools |
+| mod-disk | - | Disk and archive utilities |
+| mod-dns | - | DNS diagnostics |
+| mod-docker | dps, dlog, dexec, dstop, dclean, dimages | Container management |
+| mod-extract | extract, mktar, mkzip | Universal archive extractor |
+| mod-files | biggest, newest, oldest, empty, dupes, swap, compare, filetypes | File utilities |
+| mod-fzf | ff, fd, fkill, fenv, fmod, fh | FZF-powered tools |
+| mod-git | gipul, gipus, gicom, gista, gilog, giout, giundo, giamend, giwho, gisize | Git shortcuts |
+| mod-guard | - | Dangerous command protection |
+| mod-k8s | kpods, klog, kexec, kctx, kevents, kres | Kubernetes tools |
+| mod-mail | - | Mail server operations |
+| mod-net | lportcheck, lportlisten, lsysload, myip | Network diagnostics |
+| mod-note | note | Quick terminal notes |
+| mod-oops | oops, fuck | Command corrector |
+| mod-openshift | oclogin, ocwho, ocpods, ocdeploy, ocdash + 10 more | OpenShift management |
+| mod-process | pof, killport, zombies, waitfor | Process management |
+| mod-project | project, todos | Project auto-detection |
+| mod-rec | lrec, lrec-list, lrec-play | Terminal recording |
+| mod-see | see | Live log viewer |
+| mod-ssh | sshkeys, sshload, sshagent, sshfp | SSH agent management |
+| mod-starship | cle starship | Starship prompt integration |
+| mod-strings | upper, lower, trim, runx, watchit, randstr, randpw, joinlines, uniqcount | Text manipulation |
+| mod-sysinfo | sysinfo, top5, myip, speedtest | System info dashboard |
+| mod-timeline | timeline, activity | Session visualization |
+| mod-todo | ltodo | Universal todolist |
+| mod-zoxide | j, ji | Smart directory jumping |
