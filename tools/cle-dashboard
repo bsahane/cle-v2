@@ -671,7 +671,22 @@ _collect_certs() {
                         fi
                         ;;
                     *serial*)  CONTENT+=("  ${C_BCYN}Serial:${C_RESET}     ${line#*=}") ;;
-                    *DNS:*)    CONTENT+=("  ${C_BCYN}SANs:${C_RESET}       ${line##*DNS:}") ;;
+                    *DNS:*|*IP:*)
+                        CONTENT+=("  ${C_BCYN}SANs:${C_RESET}")
+                        local san_entry
+                        local san_list
+                        san_list=$(echo "$line" | tr ',' '\n')
+                        while IFS= read -r san_entry; do
+                            san_entry=$(echo "$san_entry" | sed 's/^[[:space:]]*//')
+                            [ -z "$san_entry" ] && continue
+                            case "$san_entry" in
+                                DNS:*) CONTENT+=("    ${C_BGRN}◦${C_RESET} ${san_entry#DNS:}") ;;
+                                IP:*)  CONTENT+=("    ${C_BYEL}◦${C_RESET} ${san_entry}") ;;
+                                othername:*) CONTENT+=("    ${C_DIM}◦ ${san_entry}${C_RESET}") ;;
+                                *) CONTENT+=("    ${C_DIM}◦ ${san_entry}${C_RESET}") ;;
+                            esac
+                        done <<< "$san_list"
+                        ;;
                 esac
             done <<< "$cert_out"
         else
