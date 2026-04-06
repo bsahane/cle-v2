@@ -1,0 +1,129 @@
+##
+## ** mod-port: Port management and scanning **
+#* version: 2026-04-06
+
+## `portscan <host> [start] [end]` - scan port range (default 1-1024)
+portscan () {
+	local HOST=${1:?Usage: portscan <host> [start_port] [end_port]}
+	local START=${2:-1}
+	local END=${3:-1024}
+	echo "$_CL=== Port Scan: $HOST ($START-$END) ===$_CN"
+	local P OPEN=0
+	for P in $(seq "$START" "$END"); do
+		if (echo >/dev/tcp/"$HOST"/"$P") 2>/dev/null; then
+			printf "  ${_Cg}%-6d open$_CN\n" "$P"
+			OPEN=$((OPEN + 1))
+		fi
+	done
+	echo "  $OPEN open ports found"
+}
+
+## `portcheck <host> <port>` - check if specific port is open
+portcheck () {
+	local HOST=${1:?Usage: portcheck <host> <port>}
+	local PORT=${2:?Usage: portcheck <host> <port>}
+	if (echo >/dev/tcp/"$HOST"/"$PORT") 2>/dev/null; then
+		echo "$_Cg  $HOST:$PORT is OPEN$_CN"
+		return 0
+	else
+		echo "$_Cr  $HOST:$PORT is CLOSED$_CN"
+		return 1
+	fi
+}
+
+## `waitport <host> <port> [timeout]` - wait for port to open (default 60s)
+waitport () {
+	local HOST=${1:?Usage: waitport <host> <port> [timeout]}
+	local PORT=${2:?Usage: waitport <host> <port> [timeout]}
+	local TIMEOUT=${3:-60}
+	local START=$(date +%s)
+	echo "Waiting for $HOST:$PORT (timeout: ${TIMEOUT}s)..."
+	while true; do
+		if (echo >/dev/tcp/"$HOST"/"$PORT") 2>/dev/null; then
+			echo "$_Cg  $HOST:$PORT is UP ($(($(date +%s) - START))s)$_CN"
+			return 0
+		fi
+		local ELAPSED=$(($(date +%s) - START))
+		[ $ELAPSED -ge "$TIMEOUT" ] && { echo "$_Cr  TIMEOUT after ${TIMEOUT}s$_CN"; return 1; }
+		printf "  ... waiting (%ds)\r" "$ELAPSED"
+		sleep 1
+	done
+}
+
+## `killport <port>` - kill process using a specific port
+killport () {
+	local PORT=${1:?Usage: killport <port>}
+	local PIDS
+	if [ "$(uname)" = "Darwin" ]; then
+		PIDS=$(lsof -ti :"$PORT" 2>/dev/null)
+	else
+		PIDS=$(ss -tlnp "sport = :$PORT" 2>/dev/null | grep -oP 'pid=\K[0-9]+' | sort -u)
+		[ -z "$PIDS" ] && PIDS=$(fuser "$PORT"/tcp 2>/dev/null)
+	fi
+	if [ -z "$PIDS" ]; then
+		echo "No process found on port $PORT"
+		return 1
+	fi
+	echo "Processes on port $PORT:"
+	for PID in $PIDS; do
+		local NAME
+		NAME=$(ps -p "$PID" -o comm= 2>/dev/null || echo "unknown")
+		echo "  PID $PID ($NAME)"
+	done
+	_cleask "Kill these processes?" && {
+		for PID in $PIDS; do
+			kill "$PID" 2>/dev/null && echo "  Killed $PID" || echo "  Failed to kill $PID"
+		done
+	}
+}
+
+## `listening` - show all listening ports with process info
+listening () {
+	echo "$_CL=== Listening Ports ===$_CN"
+	if [ "$(uname)" = "Darwin" ]; then
+		lsof -i -P -n 2>/dev/null | grep LISTEN | awk '{printf "  %-8s PID:%-6s %s\n", $1, $2, $9}' | sort -t: -k2 -n
+	else
+		ss -tlnp 2>/dev/null | tail -n +2 | awk '{
+			port=$4; sub(/.*:/,"",port)
+			proc=$6; gsub(/.*users:\(\("|",.*/, "", proc)
+			printf "  %-25s %s\n", $4, proc
+		}' | sort -t: -k2 -n
+	fi
+}
+
+## `portfwd <local_port> <remote_host> <remote_port>` - SSH port forward
+portfwd () {
+	local LP=${1:?Usage: portfwd <local_port> <remote_host:port|remote_host> [remote_port]}
+	local RH=${2:?Usage: portfwd <local_port> <remote_host> [remote_port]}
+	local RP=${3:-$LP}
+	echo "Forwarding localhost:$LP -> $RH:$RP"
+	echo "Press Ctrl+C to stop"
+	ssh -N -L "$LP:$RH:$RP" localhost 2>/dev/null || \
+	ssh -N -L "$LP:localhost:$RP" "$RH" 2>/dev/null
+}
+
+## `openport <port>` - quickly test port accessibility from outside
+openport () {
+	local PORT=${1:?Usage: openport <port>}
+	echo "$_CL=== Testing port $PORT ===$_CN"
+	echo "  Local binding:"
+	if [ "$(uname)" = "Darwin" ]; then
+		lsof -i :"$PORT" -P -n 2>/dev/null | head -5 || echo "  Not bound locally"
+	else
+		ss -tlnp "sport = :$PORT" 2>/dev/null | head -5 || echo "  Not bound locally"
+	fi
+	echo ""
+	echo "  External check:"
+	local IP
+	IP=$(curl -s -4 ifconfig.me 2>/dev/null || echo "unknown")
+	echo "  Your IP: $IP"
+	if command -v nc >/dev/null 2>&1; then
+		if nc -z -w 3 "$IP" "$PORT" 2>/dev/null; then
+			echo "  ${_Cg}Port $PORT is reachable$_CN"
+		else
+			echo "  ${_Cr}Port $PORT is NOT reachable (firewall?)$_CN"
+		fi
+	else
+		echo "  Install 'nc' for external port testing"
+	fi
+}

@@ -1,0 +1,139 @@
+##
+## ** mod-ansible: Ansible workflow shortcuts **
+#* version: 2026-04-06
+
+command -v ansible >/dev/null 2>&1 || command -v ansible-playbook >/dev/null 2>&1 || return
+
+alias ap='ansible-playbook'
+alias av='ansible-vault'
+alias ag='ansible-galaxy'
+alias ai='ansible-inventory'
+
+## `aplay <playbook> [args]` - run playbook with timing and colorized output
+aplay () {
+	local PB=${1:?Usage: aplay <playbook.yml> [ansible-playbook args...]}
+	shift
+	echo "$_CL=== Running: $PB ===$_CN"
+	local START=$(date +%s)
+	ANSIBLE_FORCE_COLOR=1 ansible-playbook "$PB" "$@"
+	local RC=$?
+	local DUR=$(($(date +%s) - START))
+	if [ $RC -eq 0 ]; then
+		echo "$_Cg=== COMPLETE (${DUR}s) ===$_CN"
+	else
+		echo "$_Cr=== FAILED rc=$RC (${DUR}s) ===$_CN"
+	fi
+	return $RC
+}
+
+## `acheck <playbook> [args]` - dry-run a playbook (check mode)
+acheck () {
+	local PB=${1:?Usage: acheck <playbook.yml>}
+	shift
+	echo "$_Cy=== CHECK MODE: $PB ===$_CN"
+	ANSIBLE_FORCE_COLOR=1 ansible-playbook --check --diff "$PB" "$@"
+}
+
+## `adiff <playbook> [args]` - run playbook with diff output
+adiff () {
+	local PB=${1:?Usage: adiff <playbook.yml>}
+	shift
+	ANSIBLE_FORCE_COLOR=1 ansible-playbook --diff "$PB" "$@"
+}
+
+## `aping <pattern>` - ping hosts matching pattern
+aping () {
+	local PAT=${1:?Usage: aping <host_pattern>}
+	ansible "$PAT" -m ping
+}
+
+## `afacts <host>` - gather facts from a host
+afacts () {
+	local HOST=${1:?Usage: afacts <host>}
+	ansible "$HOST" -m setup 2>/dev/null | python3 -m json.tool 2>/dev/null | less
+}
+
+## `arun <pattern> <command>` - run ad-hoc command on hosts
+arun () {
+	local PAT=${1:?Usage: arun <host_pattern> <command>}
+	shift
+	local CMD="$*"
+	[ -z "$CMD" ] && { echo "Usage: arun <pattern> <command>"; return 1; }
+	ansible "$PAT" -a "$CMD"
+}
+
+## `acopy <pattern> <src> <dest>` - copy file to hosts
+acopy () {
+	local PAT=${1:?Usage: acopy <pattern> <src> <dest>}
+	local SRC=${2:?Usage: acopy <pattern> <src> <dest>}
+	local DST=${3:?Usage: acopy <pattern> <src> <dest>}
+	ansible "$PAT" -m copy -a "src=$SRC dest=$DST"
+}
+
+## `ainv [inventory]` - show inventory (default: hosts)
+ainv () {
+	local INV="${1:-}"
+	if [ -n "$INV" ]; then
+		ansible-inventory -i "$INV" --list 2>/dev/null | python3 -m json.tool 2>/dev/null | less
+	else
+		ansible-inventory --list 2>/dev/null | python3 -m json.tool 2>/dev/null | less
+	fi
+}
+
+## `ainv-graph [inventory]` - show inventory as tree
+ainv-graph () {
+	local INV="${1:-}"
+	if [ -n "$INV" ]; then
+		ansible-inventory -i "$INV" --graph
+	else
+		ansible-inventory --graph
+	fi
+}
+
+## `alint <playbook>` - lint a playbook (requires ansible-lint)
+alint () {
+	local PB=${1:?Usage: alint <playbook.yml>}
+	if command -v ansible-lint >/dev/null 2>&1; then
+		ansible-lint "$PB"
+	else
+		echo "ansible-lint not installed. Install: pip install ansible-lint"
+		echo "Running basic YAML check instead..."
+		python3 -c "import yaml; yaml.safe_load(open('$PB')); print('YAML: OK')" 2>&1
+	fi
+}
+
+## `avault-edit <file>` - edit vault-encrypted file
+avault-edit () {
+	local FILE=${1:?Usage: avault-edit <file>}
+	ansible-vault edit "$FILE"
+}
+
+## `avault-encrypt <file>` - encrypt a file with vault
+avault-encrypt () {
+	local FILE=${1:?Usage: avault-encrypt <file>}
+	ansible-vault encrypt "$FILE"
+}
+
+## `avault-decrypt <file>` - decrypt a vault file
+avault-decrypt () {
+	local FILE=${1:?Usage: avault-decrypt <file>}
+	ansible-vault decrypt "$FILE"
+}
+
+## `avault-view <file>` - view vault-encrypted file
+avault-view () {
+	local FILE=${1:?Usage: avault-view <file>}
+	ansible-vault view "$FILE"
+}
+
+## `aroles` - list installed roles
+aroles () {
+	echo "$_CL=== Installed Roles ===$_CN"
+	ansible-galaxy role list 2>/dev/null || ls ~/.ansible/roles/ 2>/dev/null || echo "No roles found"
+}
+
+## `acollections` - list installed collections
+acollections () {
+	echo "$_CL=== Installed Collections ===$_CN"
+	ansible-galaxy collection list 2>/dev/null || echo "No collections found"
+}

@@ -1,0 +1,131 @@
+##
+## ** mod-json: Advanced JSON processing utilities **
+#* version: 2026-04-06
+
+## `jval <file|->` - validate JSON (file or stdin)
+jval () {
+	if [ -n "$1" ] && [ -f "$1" ]; then
+		python3 -c "import json,sys; json.load(open('$1')); print('Valid JSON')" 2>&1
+	else
+		python3 -c "import json,sys; json.load(sys.stdin); print('Valid JSON')" 2>&1
+	fi
+}
+
+## `jfmt [file]` - format/pretty-print JSON (file or stdin)
+jfmt () {
+	if [ -n "$1" ] && [ -f "$1" ]; then
+		python3 -m json.tool "$1" 2>/dev/null || { echo "Invalid JSON"; return 1; }
+	else
+		python3 -m json.tool 2>/dev/null || { echo "Invalid JSON"; return 1; }
+	fi
+}
+
+## `jmin [file]` - minify JSON (file or stdin)
+jmin () {
+	if [ -n "$1" ] && [ -f "$1" ]; then
+		python3 -c "import json,sys; print(json.dumps(json.load(open('$1')),separators=(',',':')))" 2>/dev/null
+	else
+		python3 -c "import json,sys; print(json.dumps(json.load(sys.stdin),separators=(',',':')))" 2>/dev/null
+	fi
+}
+
+## `jq. <path> [file]` - query JSON with dot path (e.g. jq. .items[0].name)
+jq. () {
+	local P=${1:?Usage: jq. <path> [file]}
+	shift
+	if command -v jq >/dev/null 2>&1; then
+		if [ -n "$1" ] && [ -f "$1" ]; then
+			jq "$P" "$1"
+		else
+			jq "$P"
+		fi
+	else
+		local PYPATH
+		PYPATH=$(echo "$P" | sed "s/^\.//" | sed "s/\.\([a-zA-Z_][a-zA-Z0-9_]*\)/['\1']/g")
+		if [ -n "$1" ] && [ -f "$1" ]; then
+			python3 -c "import json; d=json.load(open('$1')); print(json.dumps(d$PYPATH, indent=2))" 2>/dev/null
+		else
+			python3 -c "import json,sys; d=json.load(sys.stdin); print(json.dumps(d$PYPATH, indent=2))" 2>/dev/null
+		fi
+	fi
+}
+
+## `jkeys [file]` - list top-level keys of JSON object
+jkeys () {
+	if [ -n "$1" ] && [ -f "$1" ]; then
+		python3 -c "import json; [print(k) for k in json.load(open('$1')).keys()]" 2>/dev/null
+	else
+		python3 -c "import json,sys; [print(k) for k in json.load(sys.stdin).keys()]" 2>/dev/null
+	fi
+}
+
+## `jlen [file]` - count items in JSON array or keys in object
+jlen () {
+	if [ -n "$1" ] && [ -f "$1" ]; then
+		python3 -c "import json; d=json.load(open('$1')); print(len(d))" 2>/dev/null
+	else
+		python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d))" 2>/dev/null
+	fi
+}
+
+## `jdiff <file1> <file2>` - diff two JSON files (structural)
+jdiff () {
+	local F1=${1:?Usage: jdiff <file1> <file2>}
+	local F2=${2:?Usage: jdiff <file1> <file2>}
+	python3 -c "
+import json, sys
+a = json.load(open('$F1'))
+b = json.load(open('$F2'))
+def diff(p, x, y):
+    if type(x) != type(y):
+        print(f'  {p}: type {type(x).__name__} -> {type(y).__name__}')
+    elif isinstance(x, dict):
+        for k in set(list(x.keys()) + list(y.keys())):
+            if k not in x: print(f'  + {p}.{k}')
+            elif k not in y: print(f'  - {p}.{k}')
+            else: diff(f'{p}.{k}', x[k], y[k])
+    elif isinstance(x, list):
+        if len(x) != len(y): print(f'  {p}: length {len(x)} -> {len(y)}')
+        for i in range(min(len(x),len(y))): diff(f'{p}[{i}]', x[i], y[i])
+    elif x != y:
+        print(f'  {p}: {repr(x)} -> {repr(y)}')
+diff('$', a, b) or print('No differences')
+" 2>/dev/null
+}
+
+## `j2y [file]` - convert JSON to YAML (requires PyYAML)
+j2y () {
+	if [ -n "$1" ] && [ -f "$1" ]; then
+		python3 -c "import json,yaml; print(yaml.dump(json.load(open('$1')),default_flow_style=False))" 2>/dev/null || echo "Requires: pip install pyyaml"
+	else
+		python3 -c "import json,yaml,sys; print(yaml.dump(json.load(sys.stdin),default_flow_style=False))" 2>/dev/null || echo "Requires: pip install pyyaml"
+	fi
+}
+
+## `y2j [file]` - convert YAML to JSON (requires PyYAML)
+y2j () {
+	if [ -n "$1" ] && [ -f "$1" ]; then
+		python3 -c "import json,yaml; print(json.dumps(yaml.safe_load(open('$1')),indent=2))" 2>/dev/null || echo "Requires: pip install pyyaml"
+	else
+		python3 -c "import json,yaml,sys; print(json.dumps(yaml.safe_load(sys.stdin),indent=2))" 2>/dev/null || echo "Requires: pip install pyyaml"
+	fi
+}
+
+## `jgrep <key> [file]` - find all occurrences of a key in nested JSON
+jgrep () {
+	local KEY=${1:?Usage: jgrep <key> [file]}
+	shift
+	python3 -c "
+import json, sys
+def find(obj, key, path='$'):
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if k == '$KEY': print(f'  {path}.{k} = {json.dumps(v)[:80]}')
+            find(v, key, f'{path}.{k}')
+    elif isinstance(obj, list):
+        for i, v in enumerate(obj):
+            find(v, key, f'{path}[{i}]')
+data = json.load(open('$1') if '$1' and __import__('os').path.isfile('${1:-}') else sys.stdin)
+find(data, '$KEY')
+" 2>/dev/null
+}

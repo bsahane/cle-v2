@@ -20,7 +20,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Shell-bash%20%7C%20zsh-green" alt="Shell">
   <img src="https://img.shields.io/badge/OS-Linux%20%7C%20macOS-blue" alt="OS">
-  <img src="https://img.shields.io/badge/Modules-38-orange" alt="Modules">
+  <img src="https://img.shields.io/badge/Modules-45-orange" alt="Modules">
   <img src="https://img.shields.io/badge/License-GPL%20v2-red" alt="License">
   <img src="https://img.shields.io/badge/Version-2026--04--06-brightgreen" alt="Version">
 </p>
@@ -29,7 +29,7 @@
 
 ## What is CLE?
 
-CLE transforms your terminal into a powerful, consistent environment that follows you everywhere — including remote servers via SSH. It provides a colorful prompt, persistent aliases, rich command history, 38 extension modules, and seamless remote session propagation.
+CLE transforms your terminal into a powerful, consistent environment that follows you everywhere — including remote servers via SSH. It provides a colorful prompt, persistent aliases, rich command history, 45 extension modules, and seamless remote session propagation.
 
 ```
 Local Machine ──lssh──> Remote Server ──lssh──> Another Server
@@ -42,7 +42,7 @@ Local Machine ──lssh──> Remote Server ──lssh──> Another Server
 | Problem | CLE Solution |
 |---------|-------------|
 | Different shell configs on every server | `lssh` propagates your entire environment |
-| Forgetting useful commands | 38 modules with 150+ functions always available |
+| Forgetting useful commands | 45 modules with 225+ functions always available |
 | Inconsistent prompt across machines | Configurable prompt themes that travel with you |
 | Lost command history on remote | Rich history with timestamps, durations, exit codes |
 | No vim config on remote servers | Vimrc automatically packed and activated via VIMINIT |
@@ -53,7 +53,7 @@ Local Machine ──lssh──> Remote Server ──lssh──> Another Server
 
 ### Core
 
-- **Modular Architecture** — 9 core libraries + 38 optional modules
+- **Modular Architecture** — 9 core libraries + 45 optional modules
 - **Cross-Shell** — Full support for both bash and zsh
 - **Cross-Platform** — Linux and macOS with OS-specific optimizations
 - **Prompt Themes** — 6 built-in themes with git, k8s, venv, and SSH agent indicators
@@ -122,7 +122,7 @@ cle profile   # Startup timing
 
 ## Modules
 
-CLE ships with **38 extension modules** organized by category:
+CLE ships with **45 extension modules** organized by category:
 
 ### Development
 
@@ -143,6 +143,18 @@ CLE ships with **38 extension modules** organized by category:
 | **mod-sysinfo** | `sysinfo` `top5` `myip` `speedtest` | System information dashboard |
 | **mod-process** | `pof` `killport` `zombies` `waitfor` | Process management |
 | **mod-net** | `lportcheck` `lportlisten` `lsysload` | Network diagnostics |
+| **mod-port** | `portscan` `portcheck` `waitport` `killport` `listening` `portfwd` | Port management and scanning |
+| **mod-log** | `logf` `logc` `logerr` `logstat` `logtop` `logbetween` `logwatch` | Log analysis and tailing |
+| **mod-env** | `envs` `dotenv` `dotenv-show` `dotenv-diff` `pathls` `pathadd` `pathclean` | Environment variable management |
+
+### DevOps & Infrastructure
+
+| Module | Commands | Description |
+|--------|----------|-------------|
+| **mod-ansible** | `aplay` `acheck` `aping` `afacts` `arun` `ainv` `alint` `avault-*` `aroles` | Ansible workflow shortcuts |
+| **mod-terraform** | `tfinit` `tfplan` `tfapply` `tfdestroy` `tfstate` `tfws` `tflint` `tfsec` | Terraform/OpenTofu IaC |
+| **mod-http** | `GET` `POST` `PUT` `DELETE` `HEAD` `httptime` `headers` `jwt` `curlb` `waiturl` | HTTP/API testing |
+| **mod-json** | `jval` `jfmt` `jmin` `jq.` `jkeys` `jlen` `jdiff` `jgrep` `j2y` `y2j` | JSON processing utilities |
 
 ### Security & Crypto
 
@@ -427,7 +439,7 @@ cle-v2/
 │   ├── navigation.sh     # Directory navigation
 │   ├── sessions.sh       # Remote session propagation
 │   └── cle.sh            # CLE command center
-├── modules/              # 38 extension modules
+├── modules/              # 45 extension modules
 ├── themes/               # Prompt themes + palettes
 ├── commands/             # CLE subcommands
 ├── user/                 # User data (vimrc, aliases, tweaks)
@@ -442,7 +454,7 @@ cle-v2/
 - **Maintainer**: Bhushan Sahane (bsahane@redhat.com)
 - **License**: GNU GPL v2
 
-CLE was originally created as a single-file shell enhancer. v2 reimagines it as a fully modular framework with 38 extension modules, cross-platform support, and modern CLI integration.
+CLE was originally created as a single-file shell enhancer. v2 reimagines it as a fully modular framework with 45 extension modules, cross-platform support, and modern CLI integration.
 
 ---
 

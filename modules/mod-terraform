@@ -1,0 +1,158 @@
+##
+## ** mod-terraform: Terraform/OpenTofu IaC workflow shortcuts **
+#* version: 2026-04-06
+
+# Auto-detect terraform or tofu
+_CLE_TF=$(command -v tofu 2>/dev/null || command -v terraform 2>/dev/null)
+[ -z "$_CLE_TF" ] && return
+
+alias tf="$_CLE_TF"
+alias tfi="$_CLE_TF init"
+alias tfp="$_CLE_TF plan"
+alias tfa="$_CLE_TF apply"
+alias tfd="$_CLE_TF destroy"
+alias tfs="$_CLE_TF state"
+alias tfo="$_CLE_TF output"
+alias tfv="$_CLE_TF validate"
+alias tff="$_CLE_TF fmt"
+
+## `tfinit` - init with upgrade
+tfinit () {
+	echo "$_CL=== Terraform Init ===$_CN"
+	$_CLE_TF init -upgrade "$@"
+}
+
+## `tfplan [args]` - plan with output saved to tfplan
+tfplan () {
+	echo "$_CL=== Terraform Plan ===$_CN"
+	$_CLE_TF plan -out=tfplan "$@"
+	echo ""
+	echo "  Plan saved to: tfplan"
+	echo "  Apply with: tfapply"
+}
+
+## `tfapply [args]` - apply saved plan or with auto-approve
+tfapply () {
+	if [ -f "tfplan" ]; then
+		echo "$_Cy=== Applying saved plan ===$_CN"
+		$_CLE_TF apply tfplan "$@"
+		rm -f tfplan
+	else
+		echo "$_Cy=== Terraform Apply ===$_CN"
+		$_CLE_TF apply "$@"
+	fi
+}
+
+## `tfdestroy [args]` - destroy with confirmation
+tfdestroy () {
+	echo "$_Cr=== Terraform DESTROY ===$_CN"
+	echo "This will destroy all managed infrastructure!"
+	_cleask "Continue?" && $_CLE_TF destroy "$@"
+}
+
+## `tfstate` - show state summary
+tfstate () {
+	echo "$_CL=== Terraform State ===$_CN"
+	$_CLE_TF state list 2>/dev/null | while IFS= read -r res; do
+		local TYPE="${res%%.*}"
+		case "$TYPE" in
+		data) echo "  ${_Cb}$res$_CN" ;;
+		module) echo "  ${_Cy}$res$_CN" ;;
+		*) echo "  $res" ;;
+		esac
+	done
+	echo ""
+	local COUNT
+	COUNT=$($_CLE_TF state list 2>/dev/null | wc -l | tr -d ' ')
+	echo "  Total resources: $COUNT"
+}
+
+## `tfshow <resource>` - show details of a specific resource
+tfshow () {
+	local RES=${1:?Usage: tfshow <resource_address>}
+	$_CLE_TF state show "$RES"
+}
+
+## `tfoutputs` - show all outputs
+tfoutputs () {
+	echo "$_CL=== Terraform Outputs ===$_CN"
+	$_CLE_TF output 2>/dev/null
+}
+
+## `tfworkspaces` - list workspaces
+tfworkspaces () {
+	echo "$_CL=== Terraform Workspaces ===$_CN"
+	$_CLE_TF workspace list
+}
+
+## `tfws <name>` - switch workspace (create if needed)
+tfws () {
+	local NAME=${1:?Usage: tfws <workspace_name>}
+	$_CLE_TF workspace select "$NAME" 2>/dev/null || {
+		echo "Workspace '$NAME' not found."
+		_cleask "Create it?" && $_CLE_TF workspace new "$NAME"
+	}
+}
+
+## `tfgraph` - show resource dependency graph (DOT format)
+tfgraph () {
+	if command -v dot >/dev/null 2>&1; then
+		$_CLE_TF graph | dot -Tsvg > terraform-graph.svg 2>/dev/null
+		echo "  Graph saved to: terraform-graph.svg"
+		[ "$(uname)" = "Darwin" ] && open terraform-graph.svg 2>/dev/null
+	else
+		$_CLE_TF graph
+		echo ""
+		echo "  Install graphviz for SVG output: brew install graphviz"
+	fi
+}
+
+## `tflint` - validate and format check
+tflint () {
+	echo "$_CL=== Terraform Validate ===$_CN"
+	$_CLE_TF validate
+	echo ""
+	echo "$_CL=== Format Check ===$_CN"
+	$_CLE_TF fmt -check -recursive . 2>&1 | while IFS= read -r f; do
+		echo "  ${_Cy}Needs formatting: $f$_CN"
+	done
+	local RC=${PIPESTATUS[0]:-$pipestatus[1]}
+	[ "$RC" -eq 0 ] && echo "  ${_Cg}All files formatted correctly$_CN"
+}
+
+## `tffmtall` - format all .tf files recursively
+tffmtall () {
+	echo "$_CL=== Formatting .tf files ===$_CN"
+	$_CLE_TF fmt -recursive .
+	echo "  Done."
+}
+
+## `tfimport <address> <id>` - import existing resource
+tfimport () {
+	local ADDR=${1:?Usage: tfimport <resource_address> <resource_id>}
+	local ID=${2:?Usage: tfimport <resource_address> <resource_id>}
+	echo "Importing $ADDR ($ID)..."
+	$_CLE_TF import "$ADDR" "$ID"
+}
+
+## `tfcost` - estimate cost with infracost (if available)
+tfcost () {
+	if command -v infracost >/dev/null 2>&1; then
+		infracost breakdown --path .
+	else
+		echo "infracost not installed. See: https://www.infracost.io/docs/"
+	fi
+}
+
+## `tfsec` - security scan (if tfsec available)
+tfsec () {
+	if command -v tfsec >/dev/null 2>&1; then
+		command tfsec . "$@"
+	elif command -v trivy >/dev/null 2>&1; then
+		trivy config .
+	else
+		echo "Install tfsec or trivy for security scanning"
+		echo "  brew install tfsec"
+		echo "  brew install trivy"
+	fi
+}

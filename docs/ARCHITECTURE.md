@@ -57,7 +57,14 @@ cle-v2/
 │   ├── mod-serve          # Quick HTTP server, upload server, QR codes
 │   ├── mod-transfer       # File sharing (transfer.sh, 0x0.st, ix.io)
 │   ├── mod-remind         # Terminal timers, stopwatch, pomodoro, reminders
-│   └── mod-hash           # Hashing utilities (md5, sha256, verify, checkdir)
+│   ├── mod-hash           # Hashing utilities (md5, sha256, verify, checkdir)
+│   ├── mod-json           # JSON processing (jval, jfmt, jmin, jq., jkeys, jdiff, j2y, y2j)
+│   ├── mod-http           # HTTP/API testing (GET, POST, PUT, DELETE, httptime, jwt, curlb)
+│   ├── mod-log            # Log analysis (logf, logc, logerr, logstat, logtop, logwatch)
+│   ├── mod-env            # Environment management (dotenv, envs, pathls, pathadd, pathclean)
+│   ├── mod-port           # Port management (portscan, portcheck, waitport, killport, listening)
+│   ├── mod-ansible        # Ansible shortcuts (aplay, acheck, aping, afacts, arun, ainv, avault-*)
+│   └── mod-terraform      # Terraform/OpenTofu IaC (tfinit, tfplan, tfapply, tfstate, tflint)
 ├── themes/                # Visual customization
 │   ├── cle-prompt         # Prompt theme presets
 │   └── cle-palette        # Terminal color palettes
@@ -250,7 +257,7 @@ Scaffold a new module with: `cle mod new <name>`
 
 Modules are auto-sourced on shell startup and included in remote session packs.
 
-## Module Reference (32 modules)
+## Module Reference (45 modules)
 
 | Module | Functions | Description |
 |--------|-----------|-------------|
@@ -291,4 +298,11 @@ Modules are auto-sourced on shell startup and included in remote session packs.
 | mod-transfer | transfer, transfer-dir, share, paste-text | File sharing |
 | mod-remind | timer, stopwatch, pomodoro, remind, countdown | Terminal timers |
 | mod-hash | md5, sha1, sha256, hashfile, verify, checkdir | Hashing utilities |
+| mod-json | jval, jfmt, jmin, jq., jkeys, jlen, jdiff, jgrep, j2y, y2j | JSON processing |
+| mod-http | GET, POST, PUT, DELETE, HEAD, httptime, headers, jwt, curlb, waiturl, apitest | HTTP/API testing |
+| mod-log | logf, logc, logerr, logstat, logtop, logbetween, logwatch, syslog, dmesgr | Log analysis |
+| mod-env | envs, envget, envset, envdel, dotenv, dotenv-show, dotenv-diff, envexport, pathls, pathadd, pathrm, pathclean | Environment management |
+| mod-port | portscan, portcheck, waitport, killport, listening, portfwd, openport | Port management |
+| mod-ansible | aplay, acheck, adiff, aping, afacts, arun, acopy, ainv, ainv-graph, alint, avault-*, aroles, acollections | Ansible workflows |
+| mod-terraform | tfinit, tfplan, tfapply, tfdestroy, tfstate, tfshow, tfoutputs, tfworkspaces, tfws, tfgraph, tflint, tffmtall, tfimport, tfcost, tfsec | Terraform/OpenTofu IaC |
 | mod-zoxide | j, ji | Smart directory jumping |

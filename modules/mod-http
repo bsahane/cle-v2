@@ -1,0 +1,140 @@
+##
+## ** mod-http: HTTP/API testing utilities **
+#* version: 2026-04-06
+
+command -v curl >/dev/null 2>&1 || return
+
+## `GET <url> [headers...]` - HTTP GET with timing
+GET () {
+	local URL=${1:?Usage: GET <url> [header:value ...]}
+	shift
+	local HARGS=""
+	for H in "$@"; do HARGS="$HARGS -H '$H'"; done
+	eval curl -sS -w '\n--- %{http_code} | %{time_total}s | %{size_download}B ---\n' $HARGS "$URL"
+}
+
+## `POST <url> <data|@file> [headers...]` - HTTP POST with timing
+POST () {
+	local URL=${1:?Usage: POST <url> <data|@file> [header:value ...]}
+	local DATA=${2:?Usage: POST <url> <data|@file>}
+	shift 2
+	local HARGS="-H 'Content-Type: application/json'"
+	for H in "$@"; do HARGS="$HARGS -H '$H'"; done
+	eval curl -sS -X POST -d "'$DATA'" -w '\n--- %{http_code} | %{time_total}s ---\n' $HARGS "$URL"
+}
+
+## `PUT <url> <data> [headers...]` - HTTP PUT
+PUT () {
+	local URL=${1:?Usage: PUT <url> <data>}
+	local DATA=${2:?Usage: PUT <url> <data>}
+	shift 2
+	local HARGS="-H 'Content-Type: application/json'"
+	for H in "$@"; do HARGS="$HARGS -H '$H'"; done
+	eval curl -sS -X PUT -d "'$DATA'" -w '\n--- %{http_code} | %{time_total}s ---\n' $HARGS "$URL"
+}
+
+## `DELETE <url> [headers...]` - HTTP DELETE
+DELETE () {
+	local URL=${1:?Usage: DELETE <url>}
+	shift
+	local HARGS=""
+	for H in "$@"; do HARGS="$HARGS -H '$H'"; done
+	eval curl -sS -X DELETE -w '\n--- %{http_code} | %{time_total}s ---\n' $HARGS "$URL"
+}
+
+## `HEAD <url>` - show response headers only
+HEAD () {
+	local URL=${1:?Usage: HEAD <url>}
+	curl -sS -I "$URL"
+}
+
+## `httptime <url>` - detailed HTTP timing breakdown
+httptime () {
+	local URL=${1:?Usage: httptime <url>}
+	curl -sS -o /dev/null -w "\
+  DNS Lookup:   %{time_namelookup}s
+  TCP Connect:  %{time_connect}s
+  TLS Setup:    %{time_appconnect}s
+  First Byte:   %{time_starttransfer}s
+  Total:        %{time_total}s
+  HTTP Code:    %{http_code}
+  Download:     %{size_download} bytes
+  Speed:        %{speed_download} bytes/sec
+" "$URL"
+}
+
+## `headers <url>` - show response headers with color
+headers () {
+	local URL=${1:?Usage: headers <url>}
+	curl -sS -D - -o /dev/null "$URL" | while IFS= read -r line; do
+		case "$line" in
+		HTTP/*) echo "$_Cg$line$_CN" ;;
+		[Cc]ontent-*) echo "$_Cy$line$_CN" ;;
+		[Ss]erver:*|[Xx]-*) echo "$_Cb$line$_CN" ;;
+		*) echo "$line" ;;
+		esac
+	done
+}
+
+## `jwt <token>` - decode JWT token (header + payload)
+jwt () {
+	local TOKEN=${1:?Usage: jwt <token>}
+	echo "$_CL=== JWT Header ===$_CN"
+	echo "$TOKEN" | cut -d. -f1 | base64 -d 2>/dev/null | python3 -m json.tool 2>/dev/null
+	echo "$_CL=== JWT Payload ===$_CN"
+	echo "$TOKEN" | cut -d. -f2 | base64 -d 2>/dev/null | python3 -m json.tool 2>/dev/null
+}
+
+## `curlb <url> [count]` - benchmark URL (default 10 requests)
+curlb () {
+	local URL=${1:?Usage: curlb <url> [count]}
+	local N=${2:-10}
+	local SUM=0 MIN=99999 MAX=0 I=0
+	echo "Benchmarking $URL ($N requests)..."
+	while [ $I -lt "$N" ]; do
+		local T
+		T=$(curl -sS -o /dev/null -w "%{time_total}" "$URL")
+		local MS
+		MS=$(echo "$T * 1000" | bc 2>/dev/null || python3 -c "print(int($T*1000))")
+		printf "  #%d: %sms\n" $((I + 1)) "$MS"
+		SUM=$((SUM + MS))
+		[ "$MS" -lt "$MIN" ] 2>/dev/null && MIN=$MS
+		[ "$MS" -gt "$MAX" ] 2>/dev/null && MAX=$MS
+		I=$((I + 1))
+	done
+	echo "--- Results ---"
+	echo "  Avg: $((SUM / N))ms  Min: ${MIN}ms  Max: ${MAX}ms"
+}
+
+## `apitest <method> <url> [body]` - API test with full diagnostics
+apitest () {
+	local METHOD=${1:?Usage: apitest <METHOD> <url> [body]}
+	local URL=${2:?Usage: apitest <METHOD> <url> [body]}
+	local BODY="$3"
+	echo "$_CL=== API Test: $METHOD $URL ===$_CN"
+	local ARGS="-sS -X $METHOD -w '\n{\"status\":%{http_code},\"time\":%{time_total},\"size\":%{size_download}}'"
+	[ -n "$BODY" ] && ARGS="$ARGS -H 'Content-Type: application/json' -d '$BODY'"
+	echo "$_Cy> $METHOD $URL$_CN"
+	[ -n "$BODY" ] && echo "$_Cy> Body: $BODY$_CN"
+	echo ""
+	eval curl $ARGS "'$URL'"
+	echo ""
+}
+
+## `waiturl <url> [timeout]` - wait until URL responds (default 60s)
+waiturl () {
+	local URL=${1:?Usage: waiturl <url> [timeout_sec]}
+	local TIMEOUT=${2:-60}
+	local START=$(date +%s)
+	echo "Waiting for $URL (timeout: ${TIMEOUT}s)..."
+	while true; do
+		if curl -sS -o /dev/null -m 3 "$URL" 2>/dev/null; then
+			echo "$_Cg OK - $URL is responding ($(($(date +%s) - START))s)$_CN"
+			return 0
+		fi
+		local ELAPSED=$(($(date +%s) - START))
+		[ $ELAPSED -ge "$TIMEOUT" ] && { echo "$_Cr TIMEOUT after ${TIMEOUT}s$_CN"; return 1; }
+		printf "  ... waiting (%ds)\r" "$ELAPSED"
+		sleep 2
+	done
+}

@@ -1,0 +1,164 @@
+##
+## ** mod-env: Environment variable management **
+#* version: 2026-04-06
+
+## `envs [pattern]` - list env vars (optionally filtered)
+envs () {
+	if [ -n "$1" ]; then
+		env | sort | grep --color=auto -i "$1"
+	else
+		env | sort | less
+	fi
+}
+
+## `envget <var>` - show value of an environment variable
+envget () {
+	local VAR=${1:?Usage: envget <VAR_NAME>}
+	eval "echo \"\${$VAR:-<not set>}\""
+}
+
+## `envset <var> <value>` - set and export an environment variable
+envset () {
+	local VAR=${1:?Usage: envset <VAR> <value>}
+	local VAL=${2:?Usage: envset <VAR> <value>}
+	export "$VAR=$VAL"
+	echo "  $VAR=$VAL"
+}
+
+## `envdel <var>` - unset an environment variable
+envdel () {
+	local VAR=${1:?Usage: envdel <VAR>}
+	unset "$VAR"
+	echo "  Unset: $VAR"
+}
+
+## `dotenv [file]` - load .env file into current shell (default: .env)
+dotenv () {
+	local FILE="${1:-.env}"
+	if [ ! -f "$FILE" ]; then
+		echo "Not found: $FILE"
+		return 1
+	fi
+	local COUNT=0
+	while IFS= read -r line || [ -n "$line" ]; do
+		case "$line" in
+		''|\#*) continue ;;
+		esac
+		local KEY="${line%%=*}"
+		local VAL="${line#*=}"
+		# Strip surrounding quotes
+		case "$VAL" in
+		\"*\") VAL="${VAL#\"}"; VAL="${VAL%\"}" ;;
+		\'*\') VAL="${VAL#\'}"; VAL="${VAL%\'}" ;;
+		esac
+		export "$KEY=$VAL"
+		COUNT=$((COUNT + 1))
+	done < "$FILE"
+	echo "  Loaded $COUNT variables from $FILE"
+}
+
+## `dotenv-show [file]` - show .env file contents with masked secrets
+dotenv-show () {
+	local FILE="${1:-.env}"
+	if [ ! -f "$FILE" ]; then
+		echo "Not found: $FILE"
+		return 1
+	fi
+	echo "$_CL=== $FILE ===$_CN"
+	while IFS= read -r line || [ -n "$line" ]; do
+		case "$line" in
+		''|\#*) echo "$line"; continue ;;
+		esac
+		local KEY="${line%%=*}"
+		local VAL="${line#*=}"
+		case "$KEY" in
+		*KEY*|*SECRET*|*PASSWORD*|*TOKEN*|*CREDENTIAL*|*PRIVATE*)
+			local LEN=${#VAL}
+			if [ "$LEN" -le 4 ]; then
+				echo "  $KEY=****"
+			else
+				echo "  $KEY=${VAL:0:3}***${VAL:$((LEN-1)):1} ($LEN chars)"
+			fi
+			;;
+		*)
+			echo "  $KEY=$VAL"
+			;;
+		esac
+	done < "$FILE"
+}
+
+## `dotenv-diff <file1> <file2>` - compare two .env files
+dotenv-diff () {
+	local F1=${1:?Usage: dotenv-diff <file1> <file2>}
+	local F2=${2:?Usage: dotenv-diff <file1> <file2>}
+	echo "$_CL=== Env Diff: $F1 vs $F2 ===$_CN"
+	local K1 K2
+	K1=$(grep -v '^#' "$F1" 2>/dev/null | grep '=' | cut -d= -f1 | sort)
+	K2=$(grep -v '^#' "$F2" 2>/dev/null | grep '=' | cut -d= -f1 | sort)
+	local ONLY1 ONLY2 COMMON
+	ONLY1=$(comm -23 <(echo "$K1") <(echo "$K2") 2>/dev/null)
+	ONLY2=$(comm -13 <(echo "$K1") <(echo "$K2") 2>/dev/null)
+	COMMON=$(comm -12 <(echo "$K1") <(echo "$K2") 2>/dev/null)
+	[ -n "$ONLY1" ] && echo "${_Cr}Only in $F1:$_CN" && echo "$ONLY1" | sed 's/^/  - /'
+	[ -n "$ONLY2" ] && echo "${_Cg}Only in $F2:$_CN" && echo "$ONLY2" | sed 's/^/  + /'
+	if [ -n "$COMMON" ]; then
+		echo "${_Cy}Changed:$_CN"
+		echo "$COMMON" | while read -r K; do
+			local V1 V2
+			V1=$(grep "^$K=" "$F1" | head -1 | cut -d= -f2-)
+			V2=$(grep "^$K=" "$F2" | head -1 | cut -d= -f2-)
+			[ "$V1" != "$V2" ] && echo "  ~ $K"
+		done
+	fi
+}
+
+## `envexport [file]` - export current env vars to .env format
+envexport () {
+	local FILE="${1:-.env.export}"
+	env | sort | sed 's/=\(.*\)/="\1"/' > "$FILE"
+	echo "  Exported $(wc -l < "$FILE" | tr -d ' ') vars to $FILE"
+}
+
+## `pathls` - list PATH entries one per line
+pathls () {
+	echo "$PATH" | tr ':' '\n' | nl
+}
+
+## `pathadd <dir>` - add directory to PATH (prepend)
+pathadd () {
+	local DIR=${1:?Usage: pathadd <directory>}
+	[ ! -d "$DIR" ] && { echo "Not a directory: $DIR"; return 1; }
+	local ABSDIR
+	ABSDIR=$(cd "$DIR" && pwd)
+	case ":$PATH:" in
+	*:"$ABSDIR":*) echo "  Already in PATH: $ABSDIR" ;;
+	*) export PATH="$ABSDIR:$PATH"; echo "  Added: $ABSDIR" ;;
+	esac
+}
+
+## `pathrm <dir>` - remove directory from PATH
+pathrm () {
+	local DIR=${1:?Usage: pathrm <directory>}
+	PATH=$(echo "$PATH" | tr ':' '\n' | grep -v "^${DIR}$" | paste -sd: -)
+	echo "  Removed: $DIR"
+}
+
+## `pathclean` - remove duplicate and non-existent PATH entries
+pathclean () {
+	local OLDIFS=$IFS NEW="" SEEN="" D
+	IFS=':'
+	for D in $PATH; do
+		[ ! -d "$D" ] && continue
+		case ":$SEEN:" in
+		*:"$D":*) continue ;;
+		esac
+		SEEN="$SEEN:$D"
+		NEW="${NEW:+$NEW:}$D"
+	done
+	IFS=$OLDIFS
+	local BEFORE AFTER
+	BEFORE=$(echo "$PATH" | tr ':' '\n' | wc -l | tr -d ' ')
+	export PATH="$NEW"
+	AFTER=$(echo "$PATH" | tr ':' '\n' | wc -l | tr -d ' ')
+	echo "  PATH cleaned: $BEFORE -> $AFTER entries"
+}
