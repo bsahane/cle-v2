@@ -115,7 +115,6 @@ builtin alias topcpu='ps aux --sort=-%cpu 2>/dev/null | head -11 || ps aux -r | 
 # Network shortcuts
 builtin alias ping='ping -c 5'
 builtin alias fastping='ping -c 10 -i 0.2'
-builtin alias myip='curl -s ifconfig.me'
 builtin alias headers='curl -I'
 
 # History shortcut
@@ -133,7 +132,7 @@ builtin alias tree='tree -C --dirsfirst 2>/dev/null || find . -print | sed -e "s
 builtin alias reload='source $CLE_RC'
 builtin alias weather='curl -s "wttr.in/?format=3"'
 builtin alias mounted='mount | column -t'
-builtin alias ports='ss -tulanp 2>/dev/null || lsof -iTCP -sTCP:LISTEN -n -P'
+# Note: ports is provided as a richer function by mod-devtools
 
 # Platform-specific defaults
 case $OSTYPE in

@@ -1,0 +1,125 @@
+" CLE vimrc - Sensible defaults for remote SSH sessions
+" Loaded via VIMINIT when using lssh/lsudo/ltmux
+
+" Compatibility
+set nocompatible
+set encoding=utf-8
+set fileencoding=utf-8
+
+" Display
+syntax on
+set number
+set relativenumber
+set cursorline
+set showmatch
+set showcmd
+set showmode
+set laststatus=2
+set ruler
+set wildmenu
+set wildmode=longest:full,full
+set title
+set scrolloff=5
+set sidescrolloff=8
+
+" Status line (no plugin needed)
+set statusline=%f\ %m%r%h%w\ [%{&ff}/%Y]\ [%l/%L,%c]\ [%p%%]
+
+" Search
+set incsearch
+set hlsearch
+set ignorecase
+set smartcase
+" Clear search highlight with Esc
+nnoremap <Esc> :nohlsearch<CR>
+
+" Indentation
+set autoindent
+set smartindent
+set expandtab
+set tabstop=4
+set shiftwidth=4
+set softtabstop=4
+filetype plugin indent on
+
+" 2-space indent for web files
+autocmd FileType html,css,javascript,json,yaml,yml setlocal tabstop=2 shiftwidth=2 softtabstop=2
+
+" Behavior
+set backspace=indent,eol,start
+set hidden
+set autoread
+set history=1000
+set undolevels=1000
+set mouse=a
+set clipboard=unnamed
+set ttyfast
+set lazyredraw
+set timeoutlen=500
+
+" No backup clutter
+set nobackup
+set nowritebackup
+set noswapfile
+
+" Split defaults
+set splitbelow
+set splitright
+
+" Navigate splits with Ctrl+hjkl
+nnoremap <C-h> <C-w>h
+nnoremap <C-j> <C-w>j
+nnoremap <C-k> <C-w>k
+nnoremap <C-l> <C-w>l
+
+" Tab navigation
+nnoremap <Tab> :tabnext<CR>
+nnoremap <S-Tab> :tabprev<CR>
+
+" Quick save and quit
+nnoremap <leader>w :w<CR>
+nnoremap <leader>q :q<CR>
+nnoremap <leader>x :x<CR>
+
+" Visual: indent without losing selection
+vnoremap < <gv
+vnoremap > >gv
+
+" Move lines up/down in visual mode
+vnoremap J :m '>+1<CR>gv=gv
+vnoremap K :m '<-2<CR>gv=gv
+
+" Paste mode toggle (for terminal paste)
+set pastetoggle=<F2>
+
+" Remove trailing whitespace on save
+autocmd BufWritePre * :%s/\s\+$//e
+
+" Color scheme (works in most terminals)
+set background=dark
+if &t_Co >= 256 || has("gui_running")
+    try
+        colorscheme desert
+    catch
+    endtry
+endif
+
+" File type detection
+autocmd BufNewFile,BufRead *.yml,*.yaml set filetype=yaml
+autocmd BufNewFile,BufRead Dockerfile* set filetype=dockerfile
+autocmd BufNewFile,BufRead *.json set filetype=json
+autocmd BufNewFile,BufRead *.md set filetype=markdown
+autocmd BufNewFile,BufRead *.sh,*.bash set filetype=sh
+autocmd BufNewFile,BufRead *.py set filetype=python
+
+" Python specific
+autocmd FileType python setlocal colorcolumn=80
+
+" YAML specific (important for Ansible)
+autocmd FileType yaml setlocal tabstop=2 shiftwidth=2 softtabstop=2
+
+" Return to last edit position when opening files
+autocmd BufReadPost *
+    \ if line("'\"") > 0 && line("'\"") <= line("$") |
+    \   exe "normal! g`\"" |
+    \ endif

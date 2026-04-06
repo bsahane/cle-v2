@@ -64,10 +64,9 @@ cle () {
 
 		# Copy entire project structure
 		cp "$CLE_RC" "$P/rc"
-		[ -d "$CLE_RD/lib" ] && cp -r "$CLE_RD/lib" "$P/"
-		[ -d "$CLE_RD/modules" ] && cp -r "$CLE_RD/modules" "$P/"
-		[ -d "$CLE_RD/themes" ] && cp -r "$CLE_RD/themes" "$P/"
-		[ -d "$CLE_RD/commands" ] && cp -r "$CLE_RD/commands" "$P/"
+		for _SD in lib modules themes commands user; do
+			[ -d "$CLE_RD/$_SD" ] && cp -r "$CLE_RD/$_SD" "$P/"
+		done
 
 		CLE_RC=$P/rc
 		unset CLE_1
@@ -183,6 +182,19 @@ cle () {
 			echo "CLE debug mode OFF" ;;
 		esac ;;
 
+	vi)     ## `cle vi` - edit CLE vimrc
+		local _VF="$CLE_RD/user/vimrc"
+		if [ -f "$_VF" ]; then
+			vi "$_VF"
+		else
+			echo "No vimrc found at $_VF"
+			_cleask "Create one?" && {
+				mkdir -p "$CLE_RD/user"
+				echo '" CLE vimrc - Add your settings here' > "$_VF"
+				vi "$_VF"
+			}
+		fi ;;
+
 	help|-h|--help) ## `cle help [fnc]` - show help
 		P=$(ls "$CLE_D"/cle-* "$CLE_RD"/commands/cle-* 2>/dev/null)
 		sed -En '/(^|.*[[:blank:]])##/s/.*##([[:blank:]]|$)(.*)/\2/p' \
@@ -290,13 +302,19 @@ _cle_doctor () {
 	echo ""
 
 	echo "$_CU Tools:$_Cu"
-	for T in fzf tmux screen git starship; do
+	for T in fzf tmux screen git starship eza bat delta python3 curl jq; do
 		if command -v "$T" >/dev/null 2>&1; then
 			printf "  $_Cg%-12s$_CN installed\n" "$T"
 		else
 			printf "  $_Cy%-12s$_CN not found\n" "$T"
 		fi
 	done
+	echo ""
+
+	echo "$_CU Config:$_Cu"
+	[ -f "$CLE_RD/user/vimrc" ] && printf "  $_Cg%-20s$_CN active\n" "vimrc" || printf "  $_Cy%-20s$_CN missing\n" "vimrc"
+	[ -n "$VIMINIT" ] && printf "  $_Cg%-20s$_CN set\n" "VIMINIT" || printf "  $_Cy%-20s$_CN not set\n" "VIMINIT"
+	printf "  %-20s %s\n" "Modules:" "$MC"
 }
 
 # --- Startup Profiler ---
@@ -353,7 +371,7 @@ _cle_profile () {
 # --- Completions ---
 _cle_setup_completions () {
 	_clecomp () {
-		local A=(color p0 p1 p2 p3 cf mod env update reload doc help doctor profile debug deploy switch starship rprompt transient audit ed)
+		local A=(color p0 p1 p2 p3 cf mod env update reload doc help doctor profile debug deploy switch starship rprompt transient audit ed vi)
 		local C
 		COMPREPLY=()
 		case $3 in
@@ -380,6 +398,6 @@ _cle_setup_completions () {
 		autoload -Uz compinit && compinit -u 2>/dev/null
 		autoload -Uz bashcompinit && bashcompinit 2>/dev/null
 		compdef lssh=ssh 2>/dev/null
-		compdef '_arguments "1:command:(color p0 p1 p2 p3 cf mod env update reload doc help doctor deploy starship profile debug rprompt transient audit switch ed)"' cle 2>/dev/null
+		compdef '_arguments "1:command:(color p0 p1 p2 p3 cf mod env update reload doc help doctor deploy starship profile debug rprompt transient audit switch ed vi)"' cle 2>/dev/null
 	fi
 }

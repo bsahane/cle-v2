@@ -44,9 +44,4 @@ lsysload () {
 	done
 }
 
-## `myip` - show external IP address
-myip () {
-	dig @resolver1.opendns.com ANY myip.opendns.com +short 2>/dev/null \
-	|| curl -s ifconfig.me 2>/dev/null \
-	|| echo "Could not determine external IP"
-}
+## Note: myip is provided by mod-sysinfo with richer output

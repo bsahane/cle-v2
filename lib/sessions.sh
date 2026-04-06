@@ -56,12 +56,24 @@ _clepak () {
 			cp "$CLE_RD"/commands/* "$CMD_DIR/" 2>/dev/null
 		fi
 
+		# Pack vimrc for remote vi
+		local USR_DIR=$RD/user
+		if [ -d "$CLE_RD/user" ]; then
+			mkdir -p "$USR_DIR"
+			cp "$CLE_RD"/user/* "$USR_DIR/" 2>/dev/null
+		fi
+
 		cp "$CLE_TW" "$TW" 2>/dev/null
 
 		echo "# environment $CLE_USER@$CLE_FHN" >"$EN"
 		_clevdump "CLE_SRE|CLE_P..|^_C." >>"$EN"
 		_clevdump "$CLE_EXP" >>"$EN"
 		cat "$CLE_AL" >>"$EN" 2>/dev/null
+
+		# Set VIMINIT for remote sessions (use CLE vimrc)
+		if [ -f "$CLE_RD/user/vimrc" ]; then
+			echo "export VIMINIT='source $RH/$RD/user/vimrc'" >>"$EN"
+		fi
 	fi
 
 	if [ "$1" ]; then
@@ -70,6 +82,7 @@ _clepak () {
 			$([ -d "$MOD_DIR" ] && echo "$MOD_DIR") \
 			$([ -d "$THM_DIR" ] && echo "$THM_DIR") \
 			$([ -d "$CMD_DIR" ] && echo "$CMD_DIR") \
+			$([ -d "$USR_DIR" ] && echo "$USR_DIR") \
 			2>/dev/null | base64 | tr -d '\n\r ')
 	fi
 }

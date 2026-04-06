@@ -35,13 +35,13 @@ mkdir -p "$DEST_DIR"
 cp "$SRC_DIR/rc" "$DEST_DIR/"
 chmod 755 "$DEST_DIR/rc"
 
-for DIR in lib modules themes commands; do
+for DIR in lib modules themes commands user; do
 	if [ -d "$SRC_DIR/$DIR" ]; then
 		cp -r "$SRC_DIR/$DIR" "$DEST_DIR/"
 	fi
 done
 
-# Copy user files only if they don't already exist
+# Copy user files only if they don't already exist (tw/al are user data)
 for UF in tw al; do
 	if [ ! -f "$DEST_DIR/$UF" ] && [ -f "$SRC_DIR/user/$UF" ]; then
 		cp "$SRC_DIR/user/$UF" "$DEST_DIR/"

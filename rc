@@ -148,6 +148,11 @@ for M in "$CLE_RD"/modules/mod-*; do _clexe "$M"; done
 # PATH
 [[ -d $HOME/bin && ! $PATH =~ $HOME/bin ]] && PATH=$PATH:$HOME/bin
 
+# Set VIMINIT to use CLE vimrc (if no user .vimrc exists)
+if [ -f "$CLE_RD/user/vimrc" ] && [ ! -f "$HOME/.vimrc" ]; then
+	export VIMINIT="source $CLE_RD/user/vimrc"
+fi
+
 # --- Build Prompt ---
 _cledefp
 [ "$CLE_WS" ] && _clepcp x
