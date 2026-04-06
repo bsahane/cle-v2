@@ -1,0 +1,397 @@
+##
+## ** mod-workspace: Project workspace management **
+#* version: 2026-04-06
+##
+## Configurable variables (set in tw or cf):
+##   CLE_WS_DIRS     - space-separated workspace roots (default: ~/Developer ~/GitLab)
+##   CLE_WS_VENVDIR  - central venv directory (default: ~/venvs)
+##   CLE_WS_EDITOR   - preferred editor (default: auto-detect cursor/code/vi)
+##   CLE_WS_RECENT   - recent projects log (default: ~/.cle-ws-recent)
+
+_WS_DIRS="${CLE_WS_DIRS:-$HOME/Developer $HOME/GitLab}"
+_WS_VENVDIR="${CLE_WS_VENVDIR:-$HOME/venvs}"
+_WS_RECENT="${CLE_WS_RECENT:-$HOME/.cle-ws-recent}"
+
+_ws_editor () {
+	if [ -n "$CLE_WS_EDITOR" ]; then
+		echo "$CLE_WS_EDITOR"
+	elif command -v cursor >/dev/null 2>&1; then
+		echo "cursor"
+	elif command -v code >/dev/null 2>&1; then
+		echo "code"
+	else
+		echo "${EDITOR:-vi}"
+	fi
+}
+
+_ws_log_recent () {
+	local P="$1"
+	local TS=$(date +%s)
+	echo "$TS $P" >> "$_WS_RECENT"
+	# Keep last 50
+	if [ -f "$_WS_RECENT" ]; then
+		tail -50 "$_WS_RECENT" > "$_WS_RECENT.tmp" && mv "$_WS_RECENT.tmp" "$_WS_RECENT"
+	fi
+}
+
+_ws_find_project () {
+	local NAME=$1
+	local D
+	for D in $_WS_DIRS; do
+		[ -d "$D/$NAME" ] && { echo "$D/$NAME"; return 0; }
+	done
+	# Try deeper search (one level)
+	for D in $_WS_DIRS; do
+		local FOUND
+		FOUND=$(find "$D" -maxdepth 2 -type d -name "$NAME" 2>/dev/null | head -1)
+		[ -n "$FOUND" ] && { echo "$FOUND"; return 0; }
+	done
+	return 1
+}
+
+_ws_find_venv () {
+	local NAME=$1
+	local PROJDIR=$2
+	# Check central venv dir
+	[ -d "$_WS_VENVDIR/$NAME" ] && { echo "$_WS_VENVDIR/$NAME"; return 0; }
+	# Check project-local venv
+	[ -d "$PROJDIR/venv" ] && { echo "$PROJDIR/venv"; return 0; }
+	[ -d "$PROJDIR/.venv" ] && { echo "$PROJDIR/.venv"; return 0; }
+	# Check project-local env
+	[ -d "$PROJDIR/env" ] && { echo "$PROJDIR/env"; return 0; }
+	return 1
+}
+
+## `activate <project>` - find project, activate venv, cd into it
+activate () {
+	local NAME=${1:?Usage: activate <project_name>}
+	local PROJDIR VENVDIR
+
+	PROJDIR=$(_ws_find_project "$NAME")
+	if [ -z "$PROJDIR" ]; then
+		echo "${_Cr}Project '$NAME' not found in: $_WS_DIRS${_CN}"
+		echo "Try: wsfind $NAME"
+		return 1
+	fi
+
+	# Deactivate any current venv
+	typeset -f deactivate >/dev/null 2>&1 && deactivate 2>/dev/null
+
+	cd "$PROJDIR"
+	echo "${_Cg}>>> Project: $NAME${_CN}"
+	echo "    Path: $PROJDIR"
+
+	# Try to find and activate venv
+	VENVDIR=$(_ws_find_venv "$NAME" "$PROJDIR")
+	if [ -n "$VENVDIR" ] && [ -f "$VENVDIR/bin/activate" ]; then
+		source "$VENVDIR/bin/activate"
+		echo "    Venv: $VENVDIR ${_Cg}(activated)${_CN}"
+	fi
+
+	# Show project info summary
+	if [ -d .git ]; then
+		local BRANCH
+		BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null)
+		echo "    Git:  $BRANCH"
+	fi
+
+	# Show readme hint
+	local RM
+	for RM in README.md README.rst README.txt README; do
+		[ -f "$RM" ] && { echo "    Docs: $RM"; break; }
+	done
+
+	_ws_log_recent "$PROJDIR"
+}
+
+## `deactivate_ws` - deactivate current workspace (venv + return)
+deactivate_ws () {
+	typeset -f deactivate >/dev/null 2>&1 && deactivate 2>/dev/null
+	cd "$HOME"
+	echo "Workspace deactivated"
+}
+
+## `wsnew <name> [--venv] [--git]` - create new project
+wsnew () {
+	local NAME="" MKENV=0 MKGIT=0 WSROOT
+	WSROOT=$(echo "$_WS_DIRS" | awk '{print $1}')
+
+	while [ $# -gt 0 ]; do
+		case "$1" in
+		--venv) MKENV=1 ;;
+		--git)  MKGIT=1 ;;
+		-*)     echo "Usage: wsnew <name> [--venv] [--git]"; return 1 ;;
+		*)      NAME=$1 ;;
+		esac
+		shift
+	done
+
+	[ -z "$NAME" ] && { echo "Usage: wsnew <name> [--venv] [--git]"; return 1; }
+
+	local PROJDIR="$WSROOT/$NAME"
+	if [ -d "$PROJDIR" ]; then
+		echo "${_Cy}Project directory already exists: $PROJDIR${_CN}"
+		_cleask "Activate instead?" && activate "$NAME"
+		return
+	fi
+
+	mkdir -p "$PROJDIR"
+	echo "${_Cg}Created: $PROJDIR${_CN}"
+
+	if [ "$MKENV" = 1 ]; then
+		mkdir -p "$_WS_VENVDIR"
+		echo "Creating venv at $_WS_VENVDIR/$NAME ..."
+		python3 -m venv "$_WS_VENVDIR/$NAME"
+		echo "${_Cg}Venv created: $_WS_VENVDIR/$NAME${_CN}"
+	fi
+
+	if [ "$MKGIT" = 1 ]; then
+		cd "$PROJDIR" && git init
+		echo "${_Cg}Git initialized${_CN}"
+	fi
+
+	activate "$NAME"
+}
+
+## `wsclone <url> [name] [--venv]` - clone repo into workspace
+wsclone () {
+	local URL="" NAME="" MKENV=0 WSROOT
+	WSROOT=$(echo "$_WS_DIRS" | awk '{print $1}')
+
+	while [ $# -gt 0 ]; do
+		case "$1" in
+		--venv) MKENV=1 ;;
+		-*)     echo "Usage: wsclone <git_url> [name] [--venv]"; return 1 ;;
+		*)
+			if [ -z "$URL" ]; then URL=$1
+			else NAME=$1
+			fi ;;
+		esac
+		shift
+	done
+
+	[ -z "$URL" ] && { echo "Usage: wsclone <git_url> [name] [--venv]"; return 1; }
+
+	# Auto-detect name from URL
+	if [ -z "$NAME" ]; then
+		NAME=$(basename "$URL" .git)
+	fi
+
+	local PROJDIR="$WSROOT/$NAME"
+	if [ -d "$PROJDIR" ]; then
+		echo "${_Cy}Directory already exists: $PROJDIR${_CN}"
+		_cleask "Activate instead?" && activate "$NAME"
+		return
+	fi
+
+	echo "Cloning $URL -> $PROJDIR ..."
+	git clone "$URL" "$PROJDIR"
+	if [ $? -ne 0 ]; then
+		echo "${_Cr}Clone failed${_CN}"
+		return 1
+	fi
+
+	if [ "$MKENV" = 1 ]; then
+		mkdir -p "$_WS_VENVDIR"
+		python3 -m venv "$_WS_VENVDIR/$NAME"
+		echo "${_Cg}Venv created: $_WS_VENVDIR/$NAME${_CN}"
+
+		# Auto-install requirements if found
+		source "$_WS_VENVDIR/$NAME/bin/activate"
+		if [ -f "$PROJDIR/requirements.txt" ]; then
+			_cleask "Install requirements.txt?" && pip install -r "$PROJDIR/requirements.txt"
+		elif [ -f "$PROJDIR/pyproject.toml" ]; then
+			_cleask "Install from pyproject.toml?" && pip install -e "$PROJDIR"
+		fi
+	fi
+
+	activate "$NAME"
+}
+
+## `wslist [pattern]` - list all projects across workspaces
+wslist () {
+	local FILTER="${1:-}"
+	local D COUNT=0
+
+	for D in $_WS_DIRS; do
+		[ -d "$D" ] || continue
+		echo "${_CL}=== $D ===${_CN}"
+		local P
+		for P in "$D"/*/; do
+			[ -d "$P" ] || continue
+			local PNAME=$(basename "$P")
+			[ -n "$FILTER" ] && ! echo "$PNAME" | grep -qi "$FILTER" && continue
+
+			local FLAGS=""
+			[ -d "$P/.git" ] && FLAGS="${FLAGS}git "
+			[ -d "$_WS_VENVDIR/$PNAME" ] || [ -d "$P/venv" ] || [ -d "$P/.venv" ] && FLAGS="${FLAGS}venv "
+			[ -f "$P/Makefile" ] && FLAGS="${FLAGS}make "
+			[ -f "$P/Dockerfile" ] && FLAGS="${FLAGS}docker "
+			[ -f "$P/pyproject.toml" ] || [ -f "$P/setup.py" ] && FLAGS="${FLAGS}py "
+			[ -f "$P/package.json" ] && FLAGS="${FLAGS}node "
+			[ -f "$P/go.mod" ] && FLAGS="${FLAGS}go "
+			[ -f "$P/Cargo.toml" ] && FLAGS="${FLAGS}rust "
+
+			if [ -n "$FLAGS" ]; then
+				printf "  ${_Cg}%-30s${_CN} [%s]\n" "$PNAME" "$FLAGS"
+			else
+				printf "  %-30s\n" "$PNAME"
+			fi
+			COUNT=$((COUNT + 1))
+		done
+	done
+	echo ""
+	echo "$COUNT projects found"
+}
+
+## `wsfind <pattern>` - search for projects by name (deep search)
+wsfind () {
+	local PAT=${1:?Usage: wsfind <pattern>}
+	local D
+
+	echo "${_CL}=== Searching for '$PAT' ===${_CN}"
+	for D in $_WS_DIRS; do
+		[ -d "$D" ] || continue
+		find "$D" -maxdepth 3 -type d -iname "*${PAT}*" 2>/dev/null | while read -r P; do
+			local REL="${P#$D/}"
+			if [ -d "$P/.git" ]; then
+				printf "  ${_Cg}%-40s${_CN} (git)\n" "$REL"
+			else
+				printf "  %-40s\n" "$REL"
+			fi
+		done
+	done
+}
+
+## `wsopen [project]` - open project in editor (auto-detect cursor/code/vi)
+wsopen () {
+	local NAME PROJDIR ED
+
+	if [ -n "$1" ]; then
+		NAME=$1
+		PROJDIR=$(_ws_find_project "$NAME")
+		[ -z "$PROJDIR" ] && { echo "${_Cr}Project '$NAME' not found${_CN}"; return 1; }
+	else
+		PROJDIR=$PWD
+		NAME=$(basename "$PROJDIR")
+	fi
+
+	ED=$(_ws_editor)
+	echo "Opening $NAME in $ED ..."
+	"$ED" "$PROJDIR"
+	_ws_log_recent "$PROJDIR"
+}
+
+## `wsrecent [n]` - show recently accessed projects (default: 10)
+wsrecent () {
+	local N=${1:-10}
+	[ -f "$_WS_RECENT" ] || { echo "No recent projects"; return; }
+
+	echo "${_CL}=== Recent Projects ===${_CN}"
+	tail -"$N" "$_WS_RECENT" | sort -rn | while read -r TS PATH; do
+		local WHEN
+		WHEN=$(date -r "$TS" "+%Y-%m-%d %H:%M" 2>/dev/null || date -d "@$TS" "+%Y-%m-%d %H:%M" 2>/dev/null || echo "unknown")
+		local PNAME=$(basename "$PATH")
+		printf "  ${_Cg}%-25s${_CN} %s  %s\n" "$PNAME" "$WHEN" "$PATH"
+	done
+}
+
+## `wsinfo` - show current project information
+wsinfo () {
+	local D=$PWD
+	local NAME=$(basename "$D")
+
+	echo "${_CL}=== Project: $NAME ===${_CN}"
+	echo "  Path: $D"
+
+	# Git info
+	if [ -d .git ]; then
+		echo "  Git:"
+		echo "    Branch:  $(git symbolic-ref --short HEAD 2>/dev/null)"
+		echo "    Remote:  $(git remote get-url origin 2>/dev/null || echo 'none')"
+		echo "    Status:  $(git status --porcelain 2>/dev/null | wc -l | tr -d ' ') modified files"
+		echo "    Commits: $(git rev-list --count HEAD 2>/dev/null || echo 'N/A')"
+	fi
+
+	# Venv
+	if [ -n "$VIRTUAL_ENV" ]; then
+		echo "  Venv: $VIRTUAL_ENV (active)"
+	elif [ -d "$_WS_VENVDIR/$NAME" ]; then
+		echo "  Venv: $_WS_VENVDIR/$NAME (inactive)"
+	fi
+
+	# Stack detection
+	local STACK=""
+	[ -f pyproject.toml ] || [ -f setup.py ] || [ -f requirements.txt ] && STACK="$STACK Python"
+	[ -f package.json ] && STACK="$STACK Node.js"
+	[ -f go.mod ] && STACK="$STACK Go"
+	[ -f Cargo.toml ] && STACK="$STACK Rust"
+	[ -f Makefile ] && STACK="$STACK Make"
+	[ -f Dockerfile ] && STACK="$STACK Docker"
+	[ -f docker-compose.yml ] || [ -f compose.yaml ] && STACK="$STACK Compose"
+	[ -f Jenkinsfile ] && STACK="$STACK Jenkins"
+	[ -f .github ] && STACK="$STACK GitHub-Actions"
+	[ -f .gitlab-ci.yml ] && STACK="$STACK GitLab-CI"
+	[ -f helm ] && STACK="$STACK Helm"
+	[ -n "$STACK" ] && echo "  Stack:$STACK"
+
+	# Size
+	echo "  Size: $(du -sh . 2>/dev/null | awk '{print $1}')"
+	echo "  Files: $(find . -type f -not -path './.git/*' 2>/dev/null | wc -l | tr -d ' ')"
+}
+
+## `wsvenv <project> [python_version]` - create venv for existing project
+wsvenv () {
+	local NAME=${1:?Usage: wsvenv <project_name> [python_version]}
+	local PYVER=${2:-python3}
+	local PROJDIR
+
+	PROJDIR=$(_ws_find_project "$NAME")
+	[ -z "$PROJDIR" ] && { echo "${_Cr}Project '$NAME' not found${_CN}"; return 1; }
+
+	mkdir -p "$_WS_VENVDIR"
+	echo "Creating venv for $NAME using $PYVER ..."
+	"$PYVER" -m venv "$_WS_VENVDIR/$NAME"
+	echo "${_Cg}Venv created: $_WS_VENVDIR/$NAME${_CN}"
+	echo "Activate with: activate $NAME"
+}
+
+## `wsdirs` - show configured workspace directories
+wsdirs () {
+	echo "${_CL}=== Workspace Directories ===${_CN}"
+	local D
+	for D in $_WS_DIRS; do
+		if [ -d "$D" ]; then
+			local COUNT=$(ls -d "$D"/*/ 2>/dev/null | wc -l | tr -d ' ')
+			printf "  ${_Cg}%-40s${_CN} %s projects\n" "$D" "$COUNT"
+		else
+			printf "  ${_Cy}%-40s${_CN} (not found)\n" "$D"
+		fi
+	done
+	echo ""
+	echo "Venv dir: $_WS_VENVDIR"
+	echo "Editor:   $(_ws_editor)"
+	echo ""
+	echo "Configure in tw: CLE_WS_DIRS=\"/path1 /path2\""
+}
+
+## fzf-powered project selector (if fzf available)
+if command -v fzf >/dev/null 2>&1; then
+	## `wsgo` - fuzzy project selector (fzf)
+	wsgo () {
+		local D PROJECTS=""
+		for D in $_WS_DIRS; do
+			[ -d "$D" ] || continue
+			PROJECTS="$PROJECTS $(ls -d "$D"/*/ 2>/dev/null)"
+		done
+
+		local SEL
+		SEL=$(echo "$PROJECTS" | tr ' ' '\n' | grep -v '^$' | while read -r P; do
+			echo "$(basename "$P")|$P"
+		done | sort | fzf --delimiter='|' --with-nth=1 --preview 'ls -la {2}' --preview-window=right:40%)
+
+		[ -z "$SEL" ] && return
+		local CHOSEN=$(echo "$SEL" | cut -d'|' -f1)
+		activate "$CHOSEN"
+	}
+fi

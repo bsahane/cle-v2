@@ -51,7 +51,8 @@ cle-v2/
 │   ├── mod-strings        # Text manipulation (upper, lower, trim, repeat, watchit)
 │   ├── mod-files          # File utilities (biggest, newest, dupes, swap, compare)
 │   ├── mod-colors         # Terminal color display (colors16, colors256, truecolor)
-│   └── mod-process        # Process management (pof, killport, zombies, waitfor)
+│   ├── mod-process        # Process management (pof, killport, zombies, waitfor)
+│   └── mod-workspace      # Project workspace manager (activate, wsnew, wsclone, wslist)
 ├── themes/                # Visual customization
 │   ├── cle-prompt         # Prompt theme presets
 │   └── cle-palette        # Terminal color palettes
@@ -139,6 +140,9 @@ Cross-platform clipboard via `clip` (copy) and `clpaste` (paste). Auto-detects: 
 | CLE_AI_API_KEY | API key for OpenAI-compatible AI backend |
 | CLE_AI_API_URL | API URL for AI backend (default OpenAI) |
 | CLE_SSH_MUX | Enable SSH connection multiplexing (0/1, default 1) |
+| CLE_WS_DIRS | Space-separated workspace root directories (default: ~/Developer ~/GitLab) |
+| CLE_WS_VENVDIR | Central venv directory (default: ~/venvs) |
+| CLE_WS_EDITOR | Preferred editor for wsopen (default: auto-detect cursor/code/vi) |
 
 ## Remote Session Architecture
 
@@ -276,4 +280,5 @@ Modules are auto-sourced on shell startup and included in remote session packs.
 | mod-sysinfo | sysinfo, top5, myip, speedtest | System info dashboard |
 | mod-timeline | timeline, activity | Session visualization |
 | mod-todo | ltodo | Universal todolist |
+| mod-workspace | activate, wsnew, wsclone, wslist, wsfind, wsopen, wsgo, wsinfo | Project workspace manager |
 | mod-zoxide | j, ji | Smart directory jumping |
