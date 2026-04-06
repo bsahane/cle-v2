@@ -68,6 +68,7 @@ _tui_init() {
     declare -A TAB_CACHE
     declare -A TAB_CACHE_TIME
     LOG_FILE=""  # custom log file for streaming
+    CERT_TARGETS=()  # user-added cert targets (host:port)
 
     # Save terminal state
     tput smcup 2>/dev/null
@@ -184,6 +185,7 @@ _draw_status() {
     fi
     local keys=" 1-7:Tab  ↑↓/jk:Scroll  PgUp/PgDn  r:Refresh  /:Filter  q:Quit"
     [ "$ACTIVE_TAB" -eq 2 ] && keys=" 1-7:Tab  ↑↓/jk:Scroll  L:LogFile  r:Refresh  /:Filter  q:Quit"
+    [ "$ACTIVE_TAB" -eq 5 ] && keys=" 1-7:Tab  ↑↓/jk:Scroll  P:Add Port  r:Refresh  /:Filter  q:Quit"
     _fill_line $((ROWS - 1)) "$BG_BLK$C_CYN" "$keys"
 }
 
@@ -569,9 +571,13 @@ _collect_certs() {
     CONTENT=()
     local targets=("$@")
 
+    # Merge user-selected cert targets
+    if [ ${#CERT_TARGETS[@]} -gt 0 ]; then
+        targets+=("${CERT_TARGETS[@]}")
+    fi
+
     if [ ${#targets[@]} -eq 0 ]; then
         targets=("localhost:443")
-        # Auto-detect common SSL ports
         local port
         for port in 443 8443 636 993 995; do
             if (echo >/dev/tcp/localhost/"$port") 2>/dev/null; then
@@ -581,6 +587,7 @@ _collect_certs() {
     fi
 
     CONTENT+=("== 🔒 SSL/TLS CERTIFICATES ==")
+    CONTENT+=("  Press ${C_BYEL}P${C_RESET} to add a host:port for certificate check")
     CONTENT+=("")
 
     local target host port_s
@@ -687,6 +694,37 @@ _select_logfile() {
                 return ;;
             "") # Enter
                 LOG_FILE="$input"
+                SCROLL=0
+                tput civis 2>/dev/null
+                return ;;
+            $'\177'|$'\b') input="${input%?}" ;;
+            *)
+                if [ ${#ch} -eq 1 ] && [ "$(printf '%d' "'$ch")" -ge 32 ] 2>/dev/null; then
+                    input+="$ch"
+                fi
+                ;;
+        esac
+    done
+}
+
+_select_cert_target() {
+    local input=""
+    _fill_line $((ROWS - 2)) "$BG_MAG$C_BWHT$C_BOLD" \
+        " 🔒 Enter host:port (e.g. google.com:443). Enter=confirm, Esc=cancel: "
+
+    tput cnorm 2>/dev/null
+    while true; do
+        _fill_line $((ROWS - 3)) "$BG_BLK$C_BWHT" " > ${input}▌"
+        IFS= read -rsn1 ch 2>/dev/null
+        case "$ch" in
+            $'\e')
+                tput civis 2>/dev/null
+                return ;;
+            "")
+                if [ -n "$input" ]; then
+                    [[ "$input" != *:* ]] && input="$input:443"
+                    CERT_TARGETS+=("$input")
+                fi
                 SCROLL=0
                 tput civis 2>/dev/null
                 return ;;
@@ -820,9 +858,16 @@ _handle_input() {
         q|Q) return 1 ;;
         /) FILTERING=1; FILTER="" ;;
         l|L)
-            # Log file selection (only on Logs tab)
             if [ "$ACTIVE_TAB" -eq 2 ]; then
                 _select_logfile
+                FORCE_REFRESH=1
+                _load_tab "$@"
+                FORCE_REFRESH=0
+            fi
+            ;;
+        p|P)
+            if [ "$ACTIVE_TAB" -eq 5 ]; then
+                _select_cert_target
                 FORCE_REFRESH=1
                 _load_tab "$@"
                 FORCE_REFRESH=0
