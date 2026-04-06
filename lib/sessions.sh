@@ -20,48 +20,22 @@ _clepak () {
 
 		command cp -f "$CLE_RC" "$RC"
 
-		# Pack lib/ directory
-		local LIB_DIR=$RD/lib
-		if [ -d "$CLE_LIB" ]; then
-			mkdir -p "$LIB_DIR"
-			command cp -f "$CLE_LIB"/*.sh "$LIB_DIR/" 2>/dev/null
-		fi
+		# Pack directories (lib, modules, themes, commands, user)
+		local _SD
+		for _SD in lib modules themes commands user; do
+			local _SRC="$CLE_RD/$_SD"
+			local _DST="$RD/$_SD"
+			[ -d "$_SRC" ] || continue
+			mkdir -p "$_DST"
 
-		# Pack modules (selective via CLE_REMOTE_MODULES, or all)
-		local MOD_DIR=$RD/modules
-		if [ -d "$CLE_RD/modules" ]; then
-			mkdir -p "$MOD_DIR"
-			if [ -n "$CLE_REMOTE_MODULES" ]; then
+			if [ "$_SD" = "modules" ] && [ -n "$CLE_REMOTE_MODULES" ]; then
 				for _M in $CLE_REMOTE_MODULES; do
-					[ -f "$CLE_RD/modules/mod-$_M" ] && command cp -f "$CLE_RD/modules/mod-$_M" "$MOD_DIR/"
+					[ -f "$_SRC/mod-$_M" ] && command cp -f "$_SRC/mod-$_M" "$_DST/"
 				done
 			else
-				for M in $CLE_RD/modules/mod-*; do
-					[ -f "$M" ] && command cp -f "$M" "$MOD_DIR/"
-				done
+				command cp -f "$_SRC"/* "$_DST/" 2>/dev/null
 			fi
-		fi
-
-		# Pack themes/
-		local THM_DIR=$RD/themes
-		if [ -d "$CLE_RD/themes" ]; then
-			mkdir -p "$THM_DIR"
-			command cp -f "$CLE_RD"/themes/* "$THM_DIR/" 2>/dev/null
-		fi
-
-		# Pack commands/
-		local CMD_DIR=$RD/commands
-		if [ -d "$CLE_RD/commands" ]; then
-			mkdir -p "$CMD_DIR"
-			command cp -f "$CLE_RD"/commands/* "$CMD_DIR/" 2>/dev/null
-		fi
-
-		# Pack vimrc for remote vi
-		local USR_DIR=$RD/user
-		if [ -d "$CLE_RD/user" ]; then
-			mkdir -p "$USR_DIR"
-			command cp -f "$CLE_RD"/user/* "$USR_DIR/" 2>/dev/null
-		fi
+		done
 
 		command cp -f "$CLE_TW" "$TW" 2>/dev/null
 
@@ -70,20 +44,16 @@ _clepak () {
 		_clevdump "$CLE_EXP" >>"$EN"
 		cat "$CLE_AL" >>"$EN" 2>/dev/null
 
-		# Set VIMINIT for remote sessions (use CLE vimrc)
-		if [ -f "$CLE_RD/user/vimrc" ]; then
-			echo "export VIMINIT='source $RH/$RD/user/vimrc'" >>"$EN"
-		fi
+		# Set VIMINIT for remote sessions
+		[ -f "$CLE_RD/user/vimrc" ] && echo "export VIMINIT='source $RH/$RD/user/vimrc'" >>"$EN"
 	fi
 
 	if [ "$1" ]; then
-		C64=$(eval tar chzf - "$RC" "$TW" "$EN" \
-			$([ -d "$LIB_DIR" ] && echo "$LIB_DIR") \
-			$([ -d "$MOD_DIR" ] && echo "$MOD_DIR") \
-			$([ -d "$THM_DIR" ] && echo "$THM_DIR") \
-			$([ -d "$CMD_DIR" ] && echo "$CMD_DIR") \
-			$([ -d "$USR_DIR" ] && echo "$USR_DIR") \
-			2>/dev/null | base64 | tr -d '\n\r ')
+		local _DIRS=""
+		for _SD in lib modules themes commands user; do
+			[ -d "$RD/$_SD" ] && _DIRS="$_DIRS $RD/$_SD"
+		done
+		C64=$(eval tar chzf - "$RC" "$TW" "$EN" $_DIRS 2>/dev/null | base64 | tr -d '\n\r ')
 	fi
 }
 
