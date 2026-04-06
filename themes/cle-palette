@@ -1,0 +1,136 @@
+##
+## ** cle-palette: Terminal color palettes (OSC4) **
+#* version: 2026-04-06
+
+local PALNAME PALSPEC PAL BG FG HL CU CREDITS
+local PALMOD=$CLE_D/mod-palette
+
+## Solarized - by Ethan Schoonover (adapted for CLE)
+_pal_solarized () {
+	local BASE03='#002b36' BASE02='#073642' BASE01='#586e75' BASE00='#657b83'
+	local BASE0='#839496' BASE1='#93a1a1' BASE2='#eee8d5' BASE3='#fdf6e3'
+	local RED='#dc322f'    RED1='#ff3b37'    RED0='#831e1c'
+	local GREEN='#859900'  GREEN1='#9eb600'  GREEN0='#505c00'
+	local YELLOW='#b58900' YELLOW1='#d7a300' YELLOW0='#6d5200'
+	local BLUE='#268bd2'   BLUE1='#2da5fa'   BLUE0='#17537e'
+	local VIOLET='#6c71c4' VIOLET1='#8186e9' VIOLET0='#414476'
+	local CYAN='#2aa198'   CYAN1='#32c0b5'   CYAN0='#19615b'
+	local ORANGE='#cb4b16' MAGENTA='#d33682'
+	case "$1" in
+	""|d|dark)
+		BG=$BASE03; FG=$BASE0; HL=$BASE02; CU=$ORANGE; PALSPEC=dark
+		PAL="$BASE03 $RED $GREEN $YELLOW $BLUE $VIOLET $CYAN $BASE2"
+		PAL="$PAL $BASE01 $RED1 $GREEN1 $YELLOW1 $BLUE1 $VIOLET1 $CYAN1 $BASE3" ;;
+	l|light)
+		BG=$BASE3; FG=$BASE00; HL=$BASE2; CU=$MAGENTA; PALSPEC=light
+		PAL="$BASE3 $RED $GREEN $YELLOW $BLUE $VIOLET $CYAN $BASE02"
+		PAL="$PAL $BASE1 $RED0 $GREEN0 $YELLOW0 $BLUE0 $VIOLET0 $CYAN0 $BASE03" ;;
+	esac
+	CREDITS="Colors by Ethan Schoonover, adapted by Michael Arbet"
+}
+
+## Gruvbox - by Pavel Pertsev
+_pal_gruvbox () {
+	local RED="#cc241d" GREEN="#98971a" YELLOW="#d79921"
+	local BLUE="#458588" PURPLE="#b16286" AQUA="#689d6a" ORANGE='#d65d0e'
+	case "$1" in
+	""|d|dark)
+		local RED1="#fb4934" GREEN1="#b8bb26" YELLOW1="#fabd2f"
+		local BLUE1="#83a598" PURPLE1="#d3869b" AQUA1="#8ec07c"
+		local GRAY="#a89984" GRAY1="#928374"
+		case "$2" in
+		""|m|medium) BG='#282828'; PALSPEC='dark medium' ;;
+		s|soft)      BG='#32302f'; PALSPEC='dark soft' ;;
+		h|hard)      BG='#1d2021'; PALSPEC='dark hard' ;;
+		esac
+		FG='#ebdbb2'; HL='#504945'; CU=$ORANGE ;;
+	l|light)
+		local RED1="#9d0006" GREEN1="#79740e" YELLOW1="#b57614"
+		local BLUE1="#076678" PURPLE1="#8f3f71" AQUA1="#427b58"
+		local GRAY="#7c6f64" GRAY1="#928374"
+		case "$2" in
+		""|m|medium) BG='#fbf1c7'; PALSPEC='light medium' ;;
+		s|soft)      BG='#f2e5bc'; PALSPEC='light soft' ;;
+		h|hard)      BG='#f9f5d7'; PALSPEC='light hard' ;;
+		esac
+		FG='#3c3836'; HL='#d5c4a1'; CU=$ORANGE ;;
+	esac
+	PAL="$BG $RED $GREEN $YELLOW $BLUE $PURPLE $AQUA $GRAY $GRAY1 $RED1 $GREEN1 $YELLOW1 $BLUE1 $PURPLE1 $AQUA1 $FG"
+	CREDITS="Colors by Pavel Pertsev"
+}
+
+## Jellybeans - pastel theme
+_pal_jellybeans () {
+	PAL="#181818 #cf6a4c #99ad6a #d8ad4c #597bc5 #a037b0 #71b9f8 #adadad"
+	PAL="$PAL #1B1B1B #F07B58 #B2C97B #FBC958 #678FE5 #BA40CC #83D7FF #C9C9C9"
+	FG='#adadad'; BG='#181818'
+	CREDITS="Adapted from vim color scheme"
+}
+
+## Red Hat - corporate palette
+_pal_rh () {
+	local RHRED='#cc0000' ORANGE='#ec7a08' GREEN='#92d400'
+	local NAVYBLUE='#0088CE' BLUE='#00b9e4' PURPLE5='#8869b3' TEAL6='#36959e'
+	PAL="#303030 $RHRED $GREEN #f2b22d $NAVYBLUE $PURPLE5 $TEAL6 #bebebe"
+	PAL="$PAL #707070 $ORANGE #cae883 #f8d384 $BLUE #b09bcc #9acacf #f0f0f0"
+	BG='#004153'; FG='#DCDCDC'; HL='#1b5564'; CU='#80a0a9'
+	CREDITS='Red Hat palette'
+}
+
+## XTerm - simple high-contrast
+_pal_xterm () {
+	PAL="#000000 #cd0000 #00cd00 #cdcd00 #0000ee #cd00cd #00cdcd #e5e5e5 #7f7f7f #ff0000 #00ff00 #ffff00 #5c5cff #ff00ff #00ffff #ffffff"
+	BG="#000000"; CU="#62df22"; HL="#666666"; FG="#aaaaaa"
+	case "$1" in g|green) FG="#00cd00"; PALSPEC=green ;; esac
+}
+
+# --- Main ---
+case "$1" in
+show)  ## `cle palette show` - display current colors
+	printf "${_CU}Colors 0..7$_Cu\n"
+	for I in {0..7}; do printf "%s #%02d$_CN " "$(tput setaf $I)" $I; done
+	printf "\n${_CU}Colors 8..15$_Cu\n"
+	for I in {8..15}; do printf "%s #%02d$_CN " "$(tput setaf $I)" $I; done
+	echo ;;
+
+reset) ## `cle palette reset` - restore terminal defaults
+	echo -en "\e]104\e\\\\\e]110\e\\\\\e]111\e\\\\\e]112\e\\\\\e]117\e\\\\"
+	unset CLE_BG _C9
+	rm -f "$PALMOD" ;;
+
+"")
+	_clebold "${_CU}Available palettes:"
+	declare -f | sed -n 's/.*_pal_\([[:graph:]]*\).*/  - \1/p'
+	echo ""
+	if [ -f "$PALMOD" ]; then
+		printf "${_CL}Current:$_CN"
+		sed -n "s/#.*mod-palette:\([^*]*\)[*]*/\1/p" "$PALMOD"
+	else
+		echo "Using terminal defaults"
+	fi ;;
+
+*)
+	PALNAME=$1; shift
+	eval "_pal_$PALNAME" "$@"
+	printf "##\n## ** mod-palette: $PALNAME${PALSPEC:+ $PALSPEC}**\n" >"$PALMOD"
+	while read -r; do printf "## $REPLY\n" >>"$PALMOD"; done <<<"$CREDITS"
+	printf "#\n" >>"$PALMOD"
+
+	cat <<-EOP >>"$PALMOD"
+		CLE_BG='$BG'
+		_C9=$'\\e]11;$BG\\e\\\\'
+		printf '\\e]10;$FG\\e\\\\\\e]11;$BG\\e\\\\\\e]17;$HL\\e\\\\\\e]12;$CU\\e\\\\'
+	EOP
+
+	local I=0
+	printf "printf '" >>"$PALMOD"
+	for C in $PAL; do
+		printf '\\e]4;%d;%s\\e\\\\' $I "$C" >>"$PALMOD"
+		((I++))
+	done
+	printf "'\n" >>"$PALMOD"
+
+	. "$PALMOD" || return 1
+	echo "Palette: $PALNAME $PALSPEC"
+	cat <<<"$CREDITS" ;;
+esac

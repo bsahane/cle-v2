@@ -1,0 +1,35 @@
+##
+## ** cle-ed: Configuration file editor **
+#* version: 2026-04-06
+
+# Edit a file and keep a backup
+vii () {
+	[ "$1" ] || { echo "vii: filename required"; return 1; }
+	cp "$1" "$1.bk"
+	vi "$1"
+}
+
+local CLERESTART=""
+case "$1" in
+tw)    ## `cle ed tw`    - edit tweak file
+	vii "$CLE_TW"; CLERESTART=1 ;;
+lcl)   ## `cle ed lcl`   - edit local tweaks
+	vii "$HOME/.cle-local"; CLERESTART=1 ;;
+cf)    ## `cle ed cf`    - edit CLE config
+	vii "$CLE_CF"; CLERESTART=1 ;;
+brc)   ## `cle ed brc`   - edit .bashrc
+	vii "$HOME/.bashrc" ;;
+zrc)   ## `cle ed zrc`   - edit .zshrc
+	vii "$HOME/.zshrc" ;;
+vrc)   ## `cle ed vrc`   - edit .vimrc
+	vii "$HOME/.vimrc" ;;
+sshcf) ## `cle ed sshcf` - edit SSH config
+	vii "$HOME/.ssh/config" ;;
+sshkh) ## `cle ed sshkh` - edit SSH known_hosts
+	vii "$HOME/.ssh/known_hosts" ;;
+*)
+	cle help "cle ed"
+	return 1 ;;
+esac
+
+[ "$CLERESTART" ] && _cleask "Restart CLE?" && cle reload

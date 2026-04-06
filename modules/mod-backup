@@ -1,0 +1,55 @@
+##
+## ** mod-backup: Quick file and directory backup utilities **
+#* version: 2026-04-06
+
+CLE_BACKUP_DIR="${CLE_BACKUP_DIR:-$HOME/.cle-backups}"
+mkdir -p "$CLE_BACKUP_DIR" 2>/dev/null
+
+## `bak <file|dir>` - create timestamped backup
+bak () {
+	local SRC=${1:?Usage: bak <file|directory>}
+	[ ! -e "$SRC" ] && { echo "Not found: $SRC"; return 1; }
+	local NAME=$(basename "$SRC")
+	local TS=$(date +%Y%m%d-%H%M%S)
+	local DEST="$CLE_BACKUP_DIR/${NAME}.${TS}"
+
+	if [ -d "$SRC" ]; then
+		tar czf "${DEST}.tar.gz" -C "$(dirname "$SRC")" "$NAME" && \
+			echo "$_Cg✓ Backed up:$_CN ${DEST}.tar.gz ($(du -h "${DEST}.tar.gz" | cut -f1))"
+	else
+		cp "$SRC" "$DEST" && \
+			echo "$_Cg✓ Backed up:$_CN $DEST"
+	fi
+}
+
+## `bak-list [pattern]` - list backups
+bak-list () {
+	echo "$_CL=== Backups ===$_CN"
+	local PAT="${1:-*}"
+	ls -lh "$CLE_BACKUP_DIR"/$PAT 2>/dev/null | awk '{printf "  %-40s %s %s %s\n", $NF, $5, $6, $7}' || echo "  No backups found"
+	echo ""
+	echo "Backup dir: $CLE_BACKUP_DIR"
+	echo "Total size: $(du -sh "$CLE_BACKUP_DIR" 2>/dev/null | cut -f1)"
+}
+
+## `bak-restore <backup>` - restore a backup to current directory
+bak-restore () {
+	local BK=${1:?Usage: bak-restore <backup-file>}
+	local FULL="$CLE_BACKUP_DIR/$BK"
+	[ -f "$FULL" ] || FULL="$BK"
+	[ -f "$FULL" ] || { echo "Backup not found: $BK"; return 1; }
+
+	case "$FULL" in
+	*.tar.gz) tar xzf "$FULL" && echo "$_Cg✓ Restored from:$_CN $FULL" ;;
+	*) cp "$FULL" . && echo "$_Cg✓ Restored:$_CN $(basename "$FULL")" ;;
+	esac
+}
+
+## `bak-clean [days]` - remove backups older than N days (default: 30)
+bak-clean () {
+	local DAYS=${1:-30}
+	local COUNT=$(find "$CLE_BACKUP_DIR" -type f -mtime +$DAYS 2>/dev/null | wc -l | tr -d ' ')
+	echo "Found $COUNT backups older than $DAYS days"
+	[ $COUNT -eq 0 ] && return
+	_cleask "Remove them?" && find "$CLE_BACKUP_DIR" -type f -mtime +$DAYS -delete && echo "Cleaned"
+}

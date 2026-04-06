@@ -1,0 +1,33 @@
+##
+## ** mod-guard: Dangerous command protection **
+#* version: 2026-04-06
+
+# Patterns that trigger confirmation before execution
+CLE_GUARD_PATTERNS="${CLE_GUARD_PATTERNS:-rm -rf /[[:space:]]|rm -rf /\$|chmod -R 777 /|> /dev/sd|mkfs\.|dd if=.* of=/dev/}"
+
+## Wrap dangerous commands with confirmation
+_cle_guard_rm () {
+	local ARGS="$*"
+	if [[ "$ARGS" =~ rm.*-[[:alpha:]]*f.*/ ]] && [[ "$ARGS" =~ (^|[[:space:]])/($|[[:space:]]) ]]; then
+		printf "${_Cr}WARNING: Destructive rm command detected!${_CN}\n"
+		printf "  Command: rm %s\n" "$ARGS"
+		_cleask "Are you sure you want to proceed?" || return 1
+	fi
+	command rm "$@"
+}
+
+_cle_guard_chmod () {
+	local ARGS="$*"
+	if [[ "$ARGS" =~ 777.*/ ]] && [[ "$ARGS" =~ -R ]]; then
+		printf "${_Cy}WARNING: Recursive chmod 777 detected!${_CN}\n"
+		printf "  Command: chmod %s\n" "$ARGS"
+		_cleask "Are you sure?" || return 1
+	fi
+	command chmod "$@"
+}
+
+# Only activate guards if CLE_GUARD is set
+if [ "${CLE_GUARD:-0}" = 1 ]; then
+	alias rm='_cle_guard_rm'
+	alias chmod='_cle_guard_chmod'
+fi

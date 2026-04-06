@@ -1,0 +1,116 @@
+##
+## ** mod-devtools: Developer productivity tools **
+#* version: 2026-04-06
+
+## `port <port>` - find process using a port
+port () {
+	local P=${1:?Usage: port <number>}
+	echo "$_CL=== Processes on port $P ===$_CN"
+	if [ "$(uname)" = "Darwin" ]; then
+		lsof -i :"$P" -P -n 2>/dev/null | head -20
+	else
+		ss -tlnp "sport = :$P" 2>/dev/null || netstat -tlnp 2>/dev/null | grep ":$P "
+	fi
+}
+
+## `ports` - list all listening ports
+ports () {
+	echo "$_CL=== Listening Ports ===$_CN"
+	if [ "$(uname)" = "Darwin" ]; then
+		lsof -i -P -n | grep LISTEN | awk '{printf "  %-8s %-6s %s\n", $1, $9, $2}' | sort -t: -k2 -n
+	else
+		ss -tlnp 2>/dev/null | tail -n +2 | awk '{printf "  %-25s %s\n", $4, $6}'
+	fi
+}
+
+## `json` - pretty print JSON (stdin or file)
+json () {
+	if [ -n "$1" ] && [ -f "$1" ]; then
+		python3 -m json.tool "$1" 2>/dev/null || jq . "$1" 2>/dev/null
+	else
+		python3 -m json.tool 2>/dev/null || jq . 2>/dev/null
+	fi
+}
+
+## `urlencode <string>` - URL encode a string
+urlencode () {
+	python3 -c "import urllib.parse; print(urllib.parse.quote('$*'))" 2>/dev/null
+}
+
+## `urldecode <string>` - URL decode a string
+urldecode () {
+	python3 -c "import urllib.parse; print(urllib.parse.unquote('$*'))" 2>/dev/null
+}
+
+## `b64e [text]` - base64 encode (text or stdin)
+b64e () {
+	if [ -n "$*" ]; then
+		echo -n "$*" | base64
+	else
+		base64
+	fi
+}
+
+## `b64d <encoded>` - base64 decode
+b64d () {
+	if [ -n "$*" ]; then
+		echo "$*" | base64 -d 2>/dev/null || echo "$*" | base64 -D 2>/dev/null
+	else
+		base64 -d 2>/dev/null || base64 -D 2>/dev/null
+	fi
+}
+
+## `calc <expr>` - quick calculator
+calc () {
+	[ -z "$*" ] && { echo "Usage: calc <expression>"; return 1; }
+	python3 -c "from math import *; print($*)" 2>/dev/null || echo "Error: invalid expression"
+}
+
+## `weather [city]` - quick weather forecast
+weather () {
+	local CITY="${*:-}"
+	curl -s "wttr.in/${CITY// /+}?format=3" 2>/dev/null
+}
+
+## `cheat <command>` - quick command cheatsheet (cheat.sh)
+cheat () {
+	[ -z "$1" ] && { echo "Usage: cheat <command>"; return 1; }
+	curl -s "cheat.sh/$1" 2>/dev/null | less -r
+}
+
+## `epoch [timestamp]` - convert epoch to date or show current epoch
+epoch () {
+	if [ -n "$1" ]; then
+		date -r "$1" 2>/dev/null || date -d "@$1" 2>/dev/null || echo "Invalid timestamp"
+	else
+		echo "$(date +%s)  ($(date))"
+	fi
+}
+
+## `httpcode <code>` - explain HTTP status code
+httpcode () {
+	local C=${1:?Usage: httpcode <code>}
+	case $C in
+	100) echo "100 Continue" ;;
+	200) echo "200 OK" ;;
+	201) echo "201 Created" ;;
+	204) echo "204 No Content" ;;
+	301) echo "301 Moved Permanently" ;;
+	302) echo "302 Found (Temporary Redirect)" ;;
+	304) echo "304 Not Modified" ;;
+	400) echo "400 Bad Request" ;;
+	401) echo "401 Unauthorized" ;;
+	403) echo "403 Forbidden" ;;
+	404) echo "404 Not Found" ;;
+	405) echo "405 Method Not Allowed" ;;
+	408) echo "408 Request Timeout" ;;
+	409) echo "409 Conflict" ;;
+	422) echo "422 Unprocessable Entity" ;;
+	429) echo "429 Too Many Requests" ;;
+	500) echo "500 Internal Server Error" ;;
+	502) echo "502 Bad Gateway" ;;
+	503) echo "503 Service Unavailable" ;;
+	504) echo "504 Gateway Timeout" ;;
+	*) echo "$C: Unknown (check https://httpstatuses.com/$C)" ;;
+	esac
+}

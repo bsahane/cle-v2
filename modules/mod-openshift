@@ -1,0 +1,188 @@
+##
+## ** mod-openshift: Red Hat OpenShift / OKD management **
+#* version: 2026-04-06
+#* requires: oc (OpenShift CLI)
+
+command -v oc >/dev/null 2>&1 || return
+
+## `oclogin <cluster> [user]` - login to OpenShift cluster
+oclogin () {
+	local CLUSTER=${1:?Usage: oclogin <cluster-url> [username]}
+	local USER=${2:-$(whoami)}
+	echo "Logging into $CLUSTER as $USER..."
+	oc login "$CLUSTER" -u "$USER"
+}
+
+## `ocwho` - show current login, project, and cluster info
+ocwho () {
+	echo "$_CL=== OpenShift Context ===$_CN"
+	echo ""
+	printf "  $_CU%-15s$_Cu " "User:"
+	oc whoami 2>/dev/null || echo "not logged in"
+	printf "  $_CU%-15s$_Cu " "Server:"
+	oc whoami --show-server 2>/dev/null || echo "unknown"
+	printf "  $_CU%-15s$_Cu " "Project:"
+	oc project -q 2>/dev/null || echo "none"
+	printf "  $_CU%-15s$_Cu " "Console:"
+	oc whoami --show-console 2>/dev/null || echo "unknown"
+}
+
+## `ocprojects` - list all accessible projects
+ocprojects () {
+	oc get projects --no-headers 2>/dev/null | awk '{
+		status=$2
+		if(status=="Active") color="\033[32m"
+		else color="\033[33m"
+		printf "%s  %-40s %s\033[0m\n", color, $1, status
+	}'
+}
+
+## `ocpods [project]` - list pods with color-coded status
+ocpods () {
+	local NS=""
+	[ -n "$1" ] && NS="-n $1"
+	oc get pods $NS -o wide 2>/dev/null | while IFS= read -r line; do
+		case "$line" in
+		*Running*) echo "$_Cg$line$_CN" ;;
+		*Error*|*CrashLoop*|*Failed*|*ImagePull*) echo "$_Cr$line$_CN" ;;
+		*Pending*|*Init*|*ContainerCreating*) echo "$_Cy$line$_CN" ;;
+		*Completed*|*Succeeded*) echo "$_Cb$line$_CN" ;;
+		*) echo "$line" ;;
+		esac
+	done
+}
+
+## `oclog <pod> [container]` - follow pod logs
+oclog () {
+	local POD=${1:?Usage: oclog <pod> [container]}
+	shift
+	local ARGS=""
+	[ -n "$1" ] && ARGS="-c $1"
+	oc logs -f --tail 100 $ARGS "$POD"
+}
+
+## `ocexec <pod> [cmd]` - exec into pod (default: sh)
+ocexec () {
+	local POD=${1:?Usage: ocexec <pod> [command]}
+	shift
+	oc exec -it "$POD" -- "${@:-sh}"
+}
+
+## `ocrsh <pod>` - remote shell into pod
+ocrsh () {
+	local POD=${1:?Usage: ocrsh <pod>}
+	oc rsh "$POD"
+}
+
+## `ocdeploy <deployment>` - rollout latest deployment
+ocdeploy () {
+	local DEP=${1:?Usage: ocdeploy <deployment>}
+	echo "Rolling out $DEP..."
+	oc rollout latest "dc/$DEP" 2>/dev/null || oc rollout restart "deployment/$DEP" 2>/dev/null
+	echo "Watching rollout..."
+	oc rollout status "dc/$DEP" 2>/dev/null || oc rollout status "deployment/$DEP" 2>/dev/null
+}
+
+## `ocscale <deployment> <replicas>` - scale deployment
+ocscale () {
+	local DEP=${1:?Usage: ocscale <deployment> <replicas>}
+	local REP=${2:?Usage: ocscale <deployment> <replicas>}
+	oc scale "deployment/$DEP" --replicas="$REP" 2>/dev/null || \
+		oc scale "dc/$DEP" --replicas="$REP" 2>/dev/null
+	echo "Scaled $DEP to $REP replicas"
+}
+
+## `ocroutes [project]` - list routes with URLs
+ocroutes () {
+	local NS=""
+	[ -n "$1" ] && NS="-n $1"
+	echo "$_CL=== Routes ===$_CN"
+	oc get routes $NS --no-headers 2>/dev/null | while read -r name host path svc port term _; do
+		local proto="http"
+		[ "$term" != "" ] && proto="https"
+		printf "  $_Cg%-25s$_CN %s://%s%s -> %s:%s\n" "$name" "$proto" "$host" "${path:-/}" "$svc" "$port"
+	done
+}
+
+## `ocevents [project]` - show recent events
+ocevents () {
+	local NS=""
+	[ -n "$1" ] && NS="-n $1"
+	oc get events $NS --sort-by='.lastTimestamp' 2>/dev/null | tail -20
+}
+
+## `ocres` - show resource usage
+ocres () {
+	echo "$_CL=== Node Resources ===$_CN"
+	oc adm top nodes 2>/dev/null || echo "Not admin or metrics unavailable"
+	echo ""
+	echo "$_CL=== Pod Resources (top 10) ===$_CN"
+	oc adm top pods --sort-by=cpu 2>/dev/null | head -11 || echo "metrics unavailable"
+}
+
+## `ocbuild <bc>` - start build and follow logs
+ocbuild () {
+	local BC=${1:?Usage: ocbuild <buildconfig>}
+	echo "Starting build $BC..."
+	oc start-build "$BC" --follow
+}
+
+## `ocsecret <name> [key]` - view secret data (base64 decoded)
+ocsecret () {
+	local NAME=${1:?Usage: ocsecret <name> [key]}
+	local KEY=$2
+	if [ -n "$KEY" ]; then
+		oc get secret "$NAME" -o jsonpath="{.data.$KEY}" 2>/dev/null | base64 -d 2>/dev/null || base64 -D 2>/dev/null
+		echo ""
+	else
+		echo "$_CL=== Secret: $NAME ===$_CN"
+		oc get secret "$NAME" -o json 2>/dev/null | python3 -c "
+import sys,json,base64
+d=json.load(sys.stdin)
+for k,v in d.get('data',{}).items():
+    val=base64.b64decode(v).decode('utf-8','replace')
+    print(f'  {k}: {val[:80]}')
+" 2>/dev/null || echo "Error reading secret"
+	fi
+}
+
+## `occm <name> [key]` - view configmap data
+occm () {
+	local NAME=${1:?Usage: occm <name> [key]}
+	local KEY=$2
+	if [ -n "$KEY" ]; then
+		oc get configmap "$NAME" -o jsonpath="{.data.$KEY}" 2>/dev/null
+	else
+		echo "$_CL=== ConfigMap: $NAME ===$_CN"
+		oc get configmap "$NAME" -o json 2>/dev/null | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+for k,v in d.get('data',{}).items():
+    print(f'  {k}: {v[:100]}')
+" 2>/dev/null || echo "Error reading configmap"
+	fi
+}
+
+## `ocdash` - quick OpenShift project dashboard
+ocdash () {
+	local PROJ=$(oc project -q 2>/dev/null)
+	echo "$_CL=== OpenShift Dashboard: $PROJ ===$_CN"
+	echo ""
+
+	echo "$_CU Pods:$_Cu"
+	local RUNNING=$(oc get pods --no-headers 2>/dev/null | grep -c Running)
+	local TOTAL=$(oc get pods --no-headers 2>/dev/null | wc -l | tr -d ' ')
+	printf "  %d/%d running\n" "$RUNNING" "$TOTAL"
+
+	echo ""
+	echo "$_CU Deployments:$_Cu"
+	oc get deployments --no-headers 2>/dev/null | awk '{printf "  %-30s %s/%s ready\n", $1, $2, $2}' | head -10
+
+	echo ""
+	echo "$_CU Routes:$_Cu"
+	oc get routes --no-headers 2>/dev/null | awk '{printf "  %-30s %s\n", $1, $2}' | head -10
+
+	echo ""
+	echo "$_CU Recent Events:$_Cu"
+	oc get events --sort-by='.lastTimestamp' --no-headers 2>/dev/null | tail -5 | awk '{printf "  %s %s %s\n", $1, $4, $5}'
+}

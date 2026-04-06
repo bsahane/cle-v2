@@ -1,0 +1,52 @@
+##
+## ** mod-net: Network diagnostic utilities **
+#* version: 2026-04-06
+
+## `lportcheck <host> <port1> [port2...]` - check port connectivity
+lportcheck () {
+	local host=$1
+	shift
+
+	if [ -z "$host" -o -z "$1" ]; then
+		echo "Usage: lportcheck <host> <port1> [port2] ..."
+		return 1
+	fi
+
+	for port in "$@"; do
+		echo -n "  $host:$port -> "
+		if nc -z -v -w 3 "$host" "$port" 2>/dev/null; then
+			printf "${_Cg}OPEN${_CN}\n"
+		else
+			printf "${_Cr}CLOSED${_CN}\n"
+		fi
+	done
+}
+
+## `lportlisten <port>` - show what's listening on a port
+lportlisten () {
+	local port=$1
+	[ -z "$port" ] && { echo "Usage: lportlisten <port>"; return 1; }
+	echo "Listeners on port $port:"
+	echo "--------------------------------------"
+	lsof -i :"$port" 2>/dev/null || ss -tlnp "sport = :$port" 2>/dev/null
+	echo "--------------------------------------"
+}
+
+## `lsysload` - continuous system load monitor
+lsysload () {
+	while true; do
+		echo "Load: $(uptime | awk -F'load average:' '{print $2}')"
+		if command -v mpstat >/dev/null 2>&1; then
+			echo "CPU:"
+			mpstat 1 1 | awk '/Average:/ && $3 ~ /CPU/ {next} /Average:/ {print "  User: "$3"% System: "$5"% Idle: "$12"%"}'
+		fi
+		sleep 5
+	done
+}
+
+## `myip` - show external IP address
+myip () {
+	dig @resolver1.opendns.com ANY myip.opendns.com +short 2>/dev/null \
+	|| curl -s ifconfig.me 2>/dev/null \
+	|| echo "Could not determine external IP"
+}

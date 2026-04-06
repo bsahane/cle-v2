@@ -1,0 +1,60 @@
+##
+## ** mod-rec: Terminal session recording **
+#* version: 2026-04-06
+
+## `lrec [filename]` - record terminal session (uses script or asciinema)
+lrec () {
+	local OUTFILE="${1:-$CLE_D/recordings/session-$(date +%Y%m%d-%H%M%S)}"
+	mkdir -p "$(dirname "$OUTFILE")"
+
+	if command -v asciinema >/dev/null 2>&1; then
+		local CAST="${OUTFILE}.cast"
+		echo "Recording to: $CAST (asciinema)"
+		echo "Type 'exit' to stop recording."
+		asciinema rec "$CAST" -c "$CLE_RC"
+		echo "Recording saved: $CAST"
+		echo "Play: asciinema play $CAST"
+	elif command -v script >/dev/null 2>&1; then
+		local LOG="${OUTFILE}.log"
+		echo "Recording to: $LOG (script)"
+		echo "Type 'exit' to stop recording."
+		case $OSTYPE in
+		darwin*)
+			script "$LOG" "$CLE_RC" ;;
+		*)
+			script -c "$CLE_RC" "$LOG" ;;
+		esac
+		echo "Recording saved: $LOG"
+	else
+		echo "No recording tool found."
+		echo "Install: brew install asciinema (macOS) or apt install asciinema (Linux)"
+		return 1
+	fi
+}
+
+## `lrec-list` - list recorded sessions
+lrec-list () {
+	local RECDIR="$CLE_D/recordings"
+	if [ -d "$RECDIR" ] && [ "$(ls "$RECDIR" 2>/dev/null)" ]; then
+		echo "Recorded sessions:"
+		echo "--------------------------------------"
+		ls -lh "$RECDIR"/ | tail -n +2 | while read -r line; do
+			echo "  $line"
+		done
+	else
+		echo "No recordings found in $RECDIR"
+	fi
+}
+
+## `lrec-play <file>` - play back a recorded session
+lrec-play () {
+	[ -z "$1" ] && { echo "Usage: lrec-play <recording>"; lrec-list; return 1; }
+	if [[ "$1" =~ \.cast$ ]] && command -v asciinema >/dev/null 2>&1; then
+		asciinema play "$1"
+	elif [ -f "$1" ]; then
+		less -r "$1"
+	else
+		echo "File not found: $1"
+		return 1
+	fi
+}

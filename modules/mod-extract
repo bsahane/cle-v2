@@ -1,0 +1,52 @@
+##
+## ** mod-extract: Universal archive extractor **
+#* version: 2026-04-06
+
+## `extract <file...>` - auto-detect and extract any archive format
+extract () {
+	[ $# -eq 0 ] && { echo "Usage: extract <file> [file2...]"; return 1; }
+	local F
+	for F in "$@"; do
+		if [ ! -f "$F" ]; then
+			echo "extract: '$F' not found"
+			continue
+		fi
+		echo "Extracting: $F"
+		case "$F" in
+		*.tar.bz2|*.tbz2) tar xjf "$F" ;;
+		*.tar.gz|*.tgz)   tar xzf "$F" ;;
+		*.tar.xz|*.txz)   tar xJf "$F" ;;
+		*.tar.zst)         tar --zstd -xf "$F" 2>/dev/null || zstd -d "$F" -o - | tar xf - ;;
+		*.tar)             tar xf "$F" ;;
+		*.bz2)             bunzip2 "$F" ;;
+		*.gz)              gunzip "$F" ;;
+		*.xz)              unxz "$F" ;;
+		*.zst)             zstd -d "$F" ;;
+		*.zip)             unzip "$F" ;;
+		*.rar)             unrar x "$F" 2>/dev/null || 7z x "$F" ;;
+		*.7z)              7z x "$F" ;;
+		*.Z)               uncompress "$F" ;;
+		*.deb)             ar x "$F" ;;
+		*.rpm)             rpm2cpio "$F" | cpio -idmv 2>/dev/null ;;
+		*.jar)             jar xf "$F" 2>/dev/null || unzip "$F" ;;
+		*.iso)             7z x "$F" 2>/dev/null || echo "Need 7z for ISO" ;;
+		*)                 echo "extract: unsupported format '$F'" ;;
+		esac
+	done
+}
+
+## `mktar <dir>` - create tar.gz from directory
+mktar () {
+	local D=${1:?Usage: mktar <directory>}
+	[ -d "$D" ] || { echo "Not a directory: $D"; return 1; }
+	local NAME=$(basename "$D")
+	tar czf "${NAME}.tar.gz" "$D" && echo "Created ${NAME}.tar.gz ($(du -h "${NAME}.tar.gz" | cut -f1))"
+}
+
+## `mkzip <dir>` - create zip from directory
+mkzip () {
+	local D=${1:?Usage: mkzip <directory>}
+	[ -d "$D" ] || { echo "Not a directory: $D"; return 1; }
+	local NAME=$(basename "$D")
+	zip -r "${NAME}.zip" "$D" && echo "Created ${NAME}.zip"
+}

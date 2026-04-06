@@ -1,0 +1,64 @@
+##
+## ** mod-starship: Starship prompt integration **
+#* version: 2026-04-06
+
+# Check if Starship is available
+_cle_starship_check () {
+	command -v starship >/dev/null 2>&1
+}
+
+# Install Starship
+_cle_starship_install () {
+	if _cle_starship_check; then
+		echo "Starship is already installed."
+		return 0
+	fi
+
+	echo "Installing Starship..."
+	case "$(uname -s)" in
+	Darwin)
+		command -v brew >/dev/null && brew install starship \
+		|| curl -sS https://starship.rs/install.sh | sh ;;
+	Linux)
+		curl -sS https://starship.rs/install.sh | sh ;;
+	*)
+		echo "Unsupported OS. Install manually: https://starship.rs"
+		return 1 ;;
+	esac
+
+	_cle_starship_check && echo "Starship installed." || { echo "Installation failed."; return 1; }
+}
+
+# Enable Starship prompt (temporary, current session)
+_cle_starship_enable () {
+	_cle_starship_check || { echo "Starship not installed. Run: cle starship install"; return 1; }
+	eval "$(starship init "$CLE_SH")"
+	echo "Starship enabled for this session."
+}
+
+# Disable Starship, restore CLE prompt
+_cle_starship_disable () {
+	unset STARSHIP_CONFIG
+	_cleps 2>/dev/null
+	echo "CLE prompt restored."
+}
+
+# Register as CLE subcommand
+_cle_starship () {
+	case "$1" in
+	install) ## `cle starship install` - install Starship
+		_cle_starship_install ;;
+	enable)  ## `cle starship enable`  - enable for current session
+		_cle_starship_enable ;;
+	disable) ## `cle starship disable` - return to CLE prompt
+		_cle_starship_disable ;;
+	status)  ## `cle starship status`  - show installation status
+		if _cle_starship_check; then
+			echo "Starship: $(starship --version 2>/dev/null | head -1)"
+		else
+			echo "Starship: not installed"
+		fi ;;
+	*)
+		echo "Usage: cle starship {install|enable|disable|status}" ;;
+	esac
+}

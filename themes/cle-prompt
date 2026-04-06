@@ -1,0 +1,53 @@
+##
+## ** cle-prompt: Pre-configured prompt themes **
+#* version: 2026-04-06
+
+case "$1" in
+rh)        ## `cle prompt rh`       - Red Hat default style
+	cle p0 '^C1['
+	cle p1 '\u@^h '
+	cle p2 '\w^C1] '
+	cle p3 '\$ ' ;;
+
+twoline)   ## `cle prompt twoline`  - two-line prompt
+	cle p0 ' ^E '
+	cle p1 '\u'
+	cle p2 '@^h ${CLE_IP:+(^i)}'
+	cle p3 '\n^C0\A ^C3\w \$ ' ;;
+
+triliner)  ## `cle prompt triliner` - three-line prompt
+	cle p0 '\n^E \t '
+	cle p1 '\u'
+	cle p2 ' ^h ^CD^i\n'
+	cle p3 ' \w^CD:^g ^C3^$ ' ;;
+
+minimal)   ## `cle prompt minimal`  - ultra-minimal prompt
+	cle p0 '^E '
+	cle p1 ''
+	cle p2 ''
+	cle p3 '\w \$ ' ;;
+
+git)       ## `cle prompt git`      - git-focused prompt
+	cle p0 '^E \t '
+	cle p1 '\u '
+	cle p2 '^h '
+	cle p3 '\w ^CD(^g) ^C3\$ ' ;;
+
+ops)       ## `cle prompt ops`      - ops/sysadmin prompt
+	cle p0 '\n^E \t '
+	cle p1 '\u@^H'
+	cle p2 ' ^CD^i\n'
+	cle p3 ' \w \$ ' ;;
+
+"")
+	echo "$_CL=== Available Prompt Themes ===$_CN"
+	echo ""
+	echo "  rh         Red Hat default style"
+	echo "  twoline    Two-line prompt"
+	echo "  triliner   Three-line prompt"
+	echo "  minimal    Ultra-minimal prompt"
+	echo "  git        Git-focused prompt"
+	echo "  ops        Ops/sysadmin prompt"
+	echo ""
+	echo "Usage: cle prompt <theme>" ;;
+esac

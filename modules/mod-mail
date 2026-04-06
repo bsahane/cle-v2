@@ -1,0 +1,87 @@
+##
+## ** mod-mail: Mail server operations **
+#* version: 2026-04-06
+
+## `ext-cmd <command> [start] [end]` - execute on ext-mx servers
+ext-cmd () {
+	local start=1 end=10 command=""
+
+	if [ $# -eq 1 ]; then
+		command="$1"
+	elif [ $# -eq 2 ]; then
+		[[ $2 =~ ^[0-9]+$ ]] && { start="$2"; end="$2"; } || command="$2"
+	elif [ $# -eq 3 ]; then
+		[[ $2 =~ ^[0-9]+$ ]] && start="$2"
+		[[ $3 =~ ^[0-9]+$ ]] && end="$3" || command="$3"
+	fi
+
+	local I sn
+	for ((I = start; I <= end; I++)); do
+		sn=$(printf "%02d" "$I")
+		echo -n "EXT-MX$sn: "
+		ssh "ext-mx$sn.extmail.prod.ext.rdu2.redhat.com" "$command" 2>/dev/null | tail -1
+	done
+}
+
+## `lcommand <host> <cmd> [-n count]` - run command on sequential hosts
+lcommand () {
+	local base_host=$1 command_to_run=$2
+	shift 2
+
+	local count=1
+	while getopts "n:" opt; do
+		case $opt in
+		n) count=$OPTARG ;;
+		*) echo "Usage: lcommand <base_host> \"<command>\" [-n <count>]"; return 1 ;;
+		esac
+	done
+
+	[ -z "$base_host" -o -z "$command_to_run" ] && {
+		echo "Usage: lcommand <base_host> \"<command>\" [-n <count>]"
+		return 1
+	}
+
+	local base_name domain base_number
+	base_name=$(echo "$base_host" | sed -n 's/^\(.*-\)[0-9]\{2\}\..*$/\1/p')
+	base_number=$(echo "$base_host" | sed -n 's/^.*-\([0-9]\{2\}\)\..*$/\1/p')
+	domain=$(echo "$base_host" | sed -n 's/^.*-[0-9]\{2\}\(\.\)/\1/p')
+
+	[ -z "$base_name" -o -z "$base_number" -o -z "$domain" ] && {
+		echo "Error: host must be <name>-<two_digit_number>.<domain>"
+		return 1
+	}
+
+	base_number=$((10#$base_number))
+	local I
+	for ((I=0; I<count; I++)); do
+		local num=$((base_number + I))
+		local fnum=$(printf "%02d" "$num")
+		local rhost="${base_name}${fnum}${domain}"
+		echo "[$rhost]:"
+		ssh "$rhost" "$command_to_run"
+		echo "--------------------------------------"
+	done
+}
+
+## `gmail <name>` - lookup Red Hat email by name
+gmail () {
+	/Users/bsahane/Downloads/redhat-internal-linfo3-fedora/linfo.py -n "$*" | grep "Mail address" -B 1
+}
+
+## `lsmtpcheck <host> [port]` - verify SMTP connectivity
+lsmtpcheck () {
+	local host=$1 port=${2:-25}
+	[ -z "$host" ] && { echo "Usage: lsmtpcheck <host> [port]"; return 1; }
+
+	echo "Connecting to $host:$port..."
+	echo "--------------------------------------"
+	local response
+	response=$(echo -e "QUIT" | nc -w 5 "$host" "$port" 2>/dev/null)
+	if [ -z "$response" ]; then
+		echo "No response from $host:$port"
+	else
+		echo "SMTP Banner:"
+		echo "$response"
+	fi
+	echo "--------------------------------------"
+}

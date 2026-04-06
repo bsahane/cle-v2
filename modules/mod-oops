@@ -1,0 +1,82 @@
+##
+## ** mod-oops: Quick command correction (thefuck-inspired) **
+#* version: 2026-04-06
+
+## `oops` - fix the last failed command with common corrections
+oops () {
+	local LAST_CMD FIXED
+	if [ "$ZSH_NAME" ]; then
+		LAST_CMD=$(fc -ln -1 2>/dev/null)
+	else
+		LAST_CMD=$(HISTTIMEFORMAT='' history 1 | sed 's/^[ ]*[0-9]*[ ]*//')
+	fi
+	LAST_CMD="${LAST_CMD#"${LAST_CMD%%[![:space:]]*}"}"
+
+	[ -z "$LAST_CMD" ] && { echo "No previous command"; return 1; }
+
+	FIXED=""
+
+	# Permission denied -> sudo
+	if [ "$_EC" = "1" ] || [ "$_EC" = "126" ] || [ "$_EC" = "13" ]; then
+		case "$LAST_CMD" in
+		sudo\ *) ;;
+		*) FIXED="sudo $LAST_CMD" ;;
+		esac
+	fi
+
+	# Command not found -> check common typos
+	if [ "$_EC" = "127" ]; then
+		local CMD=$(echo "$LAST_CMD" | awk '{print $1}')
+		local REST=$(echo "$LAST_CMD" | sed "s/^[^ ]* //")
+		case "$CMD" in
+		gti|gigt|gii) FIXED="git $REST" ;;
+		dokcer) FIXED="docker $REST" ;;
+		kubeclt|kubctl) FIXED="kubectl $REST" ;;
+		pytohn|pyhton|pythn) FIXED="python3 $REST" ;;
+		ndoe) FIXED="node $REST" ;;
+		sl) FIXED="ls $REST" ;;
+		grpe|grepq) FIXED="grep $REST" ;;
+		cd..) FIXED="cd .." ;;
+		makr|amke) FIXED="make $REST" ;;
+		cta|tac) [ "$CMD" = "cta" ] && FIXED="cat $REST" ;;
+		esac
+
+		# Try removing/adding common extensions
+		if [ -z "$FIXED" ]; then
+			if command -v "${CMD}3" >/dev/null 2>&1; then
+				FIXED="${CMD}3 $REST"
+			elif [ ${#CMD} -gt 2 ]; then
+				local MAYBE=$(compgen -c "$CMD" 2>/dev/null | head -1)
+				[ -n "$MAYBE" ] && FIXED="$MAYBE $REST"
+			fi
+		fi
+	fi
+
+	# Git: not a git repository -> go up
+	case "$LAST_CMD" in
+	git\ *)
+		if [ ! -d ".git" ]; then
+			local _D="$PWD"
+			while [ "$_D" != "/" ]; do
+				_D=$(dirname "$_D")
+				if [ -d "$_D/.git" ]; then
+					FIXED="cd $_D && $LAST_CMD"
+					break
+				fi
+			done
+		fi ;;
+	esac
+
+	# No correction found
+	if [ -z "$FIXED" ]; then
+		echo "No automatic fix found for: $LAST_CMD (exit $_EC)"
+		echo "Try: ai-fix  (for AI-powered correction)"
+		return 1
+	fi
+
+	echo "$_Cy$LAST_CMD$_CN -> $_Cg$FIXED$_CN"
+	_cleask "Execute?" && eval "$FIXED"
+}
+
+## `fuck` - alias for oops (thefuck compatibility)
+fuck () { oops "$@"; }

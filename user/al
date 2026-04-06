@@ -1,0 +1,14 @@
+alias apb=ansible-playbook
+alias based='function _based() { echo "$1" | base64 --decode }; _based'
+alias basee='function _basee() { echo -n "$1" | base64 }; _basee'
+alias grep='grep --color=auto'
+alias l='ls -lrth'
+alias ollamachat='ollama run mistral'
+alias ollamacode='ollama run phind-codellama'
+alias p1='pp 1.1.1.1'
+alias p8='pp 8.8.8.8'
+alias pp='ping -i 0.2 -c 6 '
+alias mtr='mtr --displaymode 1 -i 5 '
+alias mtr1='mtr 1.1.1.1'
+alias run-help=man
+alias xtar='tar --same-owner -xvf '

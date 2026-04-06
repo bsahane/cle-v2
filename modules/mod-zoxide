@@ -1,0 +1,25 @@
+##
+## ** mod-zoxide: Smart directory jumping via zoxide **
+#* version: 2026-04-06
+#* requires: zoxide (https://github.com/ajeetdsouza/zoxide)
+
+if command -v zoxide >/dev/null 2>&1; then
+	eval "$(zoxide init "$CLE_SH" --no-cmd)"
+
+	## `j <query>` - jump to best-matching directory (zoxide)
+	j () {
+		local result
+		result=$(__zoxide_z "$@" 2>&1) && cd "$result" || echo "$result"
+	}
+
+	## `ji <query>` - interactive directory jump with fzf (zoxide)
+	ji () {
+		if command -v fzf >/dev/null 2>&1; then
+			local result
+			result=$(__zoxide_zi "$@" 2>&1) && cd "$result" || echo "$result"
+		else
+			echo "fzf required for interactive mode. Use 'j' instead."
+			return 1
+		fi
+	}
+fi

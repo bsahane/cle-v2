@@ -1,0 +1,56 @@
+##
+## ** mod-docker: Container management shortcuts **
+#* version: 2026-04-06
+
+# Auto-detect container runtime
+_CLE_DOCKER=$(command -v podman 2>/dev/null || command -v docker 2>/dev/null)
+[ -z "$_CLE_DOCKER" ] && return
+
+## `dps` - list running containers (compact)
+dps () {
+	$_CLE_DOCKER ps --format "table {{.ID}}\t{{.Names}}\t{{.Status}}\t{{.Ports}}" "$@"
+}
+
+## `dpsa` - list all containers including stopped
+dpsa () {
+	$_CLE_DOCKER ps -a --format "table {{.ID}}\t{{.Names}}\t{{.Status}}\t{{.Image}}" "$@"
+}
+
+## `dlog <container>` - follow container logs
+dlog () {
+	$_CLE_DOCKER logs -f --tail 100 "${1:?Usage: dlog <container>}"
+}
+
+## `dexec <container> [cmd]` - exec into container (default: sh)
+dexec () {
+	local C=${1:?Usage: dexec <container> [command]}
+	shift
+	$_CLE_DOCKER exec -it "$C" "${@:-sh}"
+}
+
+## `dstop` - stop all running containers
+dstop () {
+	local IDS=$($_CLE_DOCKER ps -q)
+	[ -z "$IDS" ] && { echo "No running containers"; return; }
+	echo "Stopping $(echo "$IDS" | wc -l | tr -d ' ') containers..."
+	$_CLE_DOCKER stop $IDS
+}
+
+## `dclean` - remove stopped containers and dangling images
+dclean () {
+	echo "Removing stopped containers..."
+	$_CLE_DOCKER container prune -f
+	echo "Removing dangling images..."
+	$_CLE_DOCKER image prune -f
+	echo "Done."
+}
+
+## `dsize` - show disk usage by containers and images
+dsize () {
+	$_CLE_DOCKER system df
+}
+
+## `dimages` - list images sorted by size
+dimages () {
+	$_CLE_DOCKER images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.ID}}" | head -30
+}

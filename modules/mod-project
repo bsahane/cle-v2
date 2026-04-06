@@ -1,0 +1,75 @@
+##
+## ** mod-project: Auto-detect project type and show info **
+#* version: 2026-04-06
+
+## `project` - detect and show project information
+project () {
+	local _DIR="${1:-.}"
+	echo "$_CL=== Project: $(basename "$(cd "$_DIR" && pwd)") ===$_CN"
+	echo ""
+
+	# Git info
+	if [ -d "$_DIR/.git" ]; then
+		local _BR=$(cd "$_DIR" && git symbolic-ref --short HEAD 2>/dev/null || git rev-parse --short HEAD 2>/dev/null)
+		local _LAST=$(cd "$_DIR" && git log -1 --format='%h %s (%cr)' 2>/dev/null)
+		local _DIRTY=$(cd "$_DIR" && git status --porcelain 2>/dev/null | wc -l | tr -d ' ')
+		printf "  $_CU%-15s$_Cu %s\n" "Git branch:" "$_BR"
+		printf "  $_CU%-15s$_Cu %s\n" "Last commit:" "$_LAST"
+		[ "$_DIRTY" -gt 0 ] && printf "  $_Cy%-15s %s files$_CN\n" "Uncommitted:" "$_DIRTY"
+	fi
+
+	# Language / Framework detection
+	echo ""
+	echo "$_CU Stack:$_Cu"
+
+	[ -f "$_DIR/package.json" ] && {
+		local _NV=$(python3 -c "import json;d=json.load(open('$_DIR/package.json'));print(d.get('name','?'),d.get('version','?'))" 2>/dev/null)
+		printf "  $_Cg%-15s$_CN %s\n" "Node.js:" "$_NV"
+		[ -f "$_DIR/next.config.js" -o -f "$_DIR/next.config.mjs" -o -f "$_DIR/next.config.ts" ] && printf "  $_Cg%-15s$_CN detected\n" "Next.js:"
+		[ -f "$_DIR/vite.config.ts" -o -f "$_DIR/vite.config.js" ] && printf "  $_Cg%-15s$_CN detected\n" "Vite:"
+	}
+	[ -f "$_DIR/pyproject.toml" ] && printf "  $_Cg%-15s$_CN %s\n" "Python:" "$(python3 --version 2>/dev/null)"
+	[ -f "$_DIR/requirements.txt" ] && printf "  $_Cg%-15s$_CN %s deps\n" "pip:" "$(wc -l < "$_DIR/requirements.txt" | tr -d ' ')"
+	[ -f "$_DIR/Cargo.toml" ] && printf "  $_Cg%-15s$_CN %s\n" "Rust:" "$(rustc --version 2>/dev/null || echo 'detected')"
+	[ -f "$_DIR/go.mod" ] && printf "  $_Cg%-15s$_CN %s\n" "Go:" "$(go version 2>/dev/null | awk '{print $3}')"
+	[ -f "$_DIR/Gemfile" ] && printf "  $_Cg%-15s$_CN %s\n" "Ruby:" "$(ruby --version 2>/dev/null | awk '{print $1,$2}')"
+	[ -f "$_DIR/pom.xml" -o -f "$_DIR/build.gradle" ] && printf "  $_Cg%-15s$_CN %s\n" "Java:" "$(java --version 2>/dev/null | head -1)"
+
+	# Infrastructure
+	echo ""
+	echo "$_CU Infrastructure:$_Cu"
+	[ -f "$_DIR/Dockerfile" ] && printf "  $_Cg%-15s$_CN detected\n" "Docker:"
+	[ -f "$_DIR/docker-compose.yml" -o -f "$_DIR/compose.yaml" ] && printf "  $_Cg%-15s$_CN detected\n" "Compose:"
+	[ -d "$_DIR/.github/workflows" ] && printf "  $_Cg%-15s$_CN %s workflows\n" "GitHub CI:" "$(ls "$_DIR/.github/workflows/" 2>/dev/null | wc -l | tr -d ' ')"
+	[ -f "$_DIR/.gitlab-ci.yml" ] && printf "  $_Cg%-15s$_CN detected\n" "GitLab CI:"
+	[ -f "$_DIR/Makefile" ] && printf "  $_Cg%-15s$_CN %s targets\n" "Makefile:" "$(grep -c '^[a-z]' "$_DIR/Makefile" 2>/dev/null)"
+	[ -d "$_DIR/helm" -o -d "$_DIR/charts" ] && printf "  $_Cg%-15s$_CN detected\n" "Helm:"
+	[ -f "$_DIR/terraform.tf" -o -d "$_DIR/terraform" ] && printf "  $_Cg%-15s$_CN detected\n" "Terraform:"
+
+	# Size stats
+	echo ""
+	echo "$_CU Size:$_Cu"
+	local _FILES=$(find "$_DIR" -type f -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/.venv/*' -not -path '*/__pycache__/*' 2>/dev/null | wc -l | tr -d ' ')
+	local _DIRS=$(find "$_DIR" -type d -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/.venv/*' 2>/dev/null | wc -l | tr -d ' ')
+	printf "  %-15s %s files, %s directories\n" "Total:" "$_FILES" "$_DIRS"
+	local _DISK=$(du -sh "$_DIR" 2>/dev/null | awk '{print $1}')
+	printf "  %-15s %s\n" "Disk:" "$_DISK"
+}
+
+## `todos [dir]` - find TODO/FIXME/HACK comments in code
+todos () {
+	local DIR="${1:-.}"
+	echo "$_CL=== TODOs and FIXMEs ===$_CN"
+	grep -rn "TODO\|FIXME\|HACK\|XXX\|BUG" "$DIR" \
+		--include="*.py" --include="*.js" --include="*.ts" --include="*.go" \
+		--include="*.rs" --include="*.java" --include="*.rb" --include="*.sh" \
+		--include="*.c" --include="*.cpp" --include="*.h" \
+		--exclude-dir=node_modules --exclude-dir=.git --exclude-dir=.venv \
+		--exclude-dir=__pycache__ --exclude-dir=vendor 2>/dev/null | while IFS=: read -r file line content; do
+		case "$content" in
+		*TODO*) printf "$_Cy%-40s$_CN L%-5s %s\n" "$file" "$line" "$content" ;;
+		*FIXME*) printf "$_Cr%-40s$_CN L%-5s %s\n" "$file" "$line" "$content" ;;
+		*) printf "$_Cb%-40s$_CN L%-5s %s\n" "$file" "$line" "$content" ;;
+		esac
+	done | head -50
+}

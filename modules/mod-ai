@@ -1,0 +1,90 @@
+##
+## ** mod-ai: AI-powered command helpers **
+#* version: 2026-04-06
+#* optional: ollama, curl (for API calls)
+
+# AI backend priority: 1) ollama (local) 2) OpenAI-compatible API 3) none
+_cle_ai_query () {
+	local PROMPT="$1"
+
+	# Try ollama first (local, private)
+	if command -v ollama >/dev/null 2>&1; then
+		local MODEL="${CLE_AI_MODEL:-llama3.2}"
+		ollama run "$MODEL" "$PROMPT" 2>/dev/null
+		return $?
+	fi
+
+	# Try OpenAI-compatible API (requires CLE_AI_API_KEY)
+	if [ -n "$CLE_AI_API_KEY" ]; then
+		local API_URL="${CLE_AI_API_URL:-https://api.openai.com/v1/chat/completions}"
+		local API_MODEL="${CLE_AI_API_MODEL:-gpt-4o-mini}"
+		local ESCAPED
+		ESCAPED=$(echo "$PROMPT" | sed 's/"/\\"/g; s/$/\\n/' | tr -d '\n')
+		local RESP
+		RESP=$(curl -s "$API_URL" \
+			-H "Authorization: Bearer $CLE_AI_API_KEY" \
+			-H "Content-Type: application/json" \
+			-d "{\"model\":\"$API_MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"$ESCAPED\"}],\"max_tokens\":500}" \
+			2>/dev/null)
+		echo "$RESP" | python3 -c "import sys,json;r=json.load(sys.stdin);print(r['choices'][0]['message']['content'])" 2>/dev/null
+		return $?
+	fi
+
+	echo "No AI backend configured."
+	echo "Options:"
+	echo "  1. Install ollama: curl -fsSL https://ollama.com/install.sh | sh"
+	echo "  2. Set CLE_AI_API_KEY and optionally CLE_AI_API_URL"
+	return 1
+}
+
+## `ai <question>` - ask AI for help
+ai () {
+	[ -z "$*" ] && { echo "Usage: ai <question>"; return 1; }
+	_cle_ai_query "$*"
+}
+
+## `ai-cmd <description>` - generate a shell command from description
+ai-cmd () {
+	[ -z "$*" ] && { echo "Usage: ai-cmd <what you want to do>"; return 1; }
+	local RESULT
+	RESULT=$(_cle_ai_query "Generate ONLY a single shell command (no explanation, no markdown) for: $*. Operating system: $(uname -s). Shell: $CLE_SH.")
+	[ -z "$RESULT" ] && return 1
+	echo "$_CL$RESULT$_CN"
+	_cleask "Execute this command?" && eval "$RESULT"
+}
+
+## `ai-explain` - explain the last failed command's error
+ai-explain () {
+	local LAST_CMD LAST_EC
+	if [ "$ZSH_NAME" ]; then
+		LAST_CMD=$(fc -ln -1)
+	else
+		LAST_CMD=$(HISTTIMEFORMAT='' history 1 | sed 's/^[ ]*[0-9]*[ ]*//')
+	fi
+	LAST_EC=$_EC
+
+	[ -z "$LAST_CMD" ] && { echo "No previous command found"; return 1; }
+
+	echo "Command:   $LAST_CMD"
+	echo "Exit code: $LAST_EC"
+	echo ""
+	_cle_ai_query "Explain why this shell command failed (exit code $LAST_EC) and suggest a fix. Be concise. Command: $LAST_CMD"
+}
+
+## `ai-fix` - suggest a fix for the last failed command
+ai-fix () {
+	local LAST_CMD
+	if [ "$ZSH_NAME" ]; then
+		LAST_CMD=$(fc -ln -1)
+	else
+		LAST_CMD=$(HISTTIMEFORMAT='' history 1 | sed 's/^[ ]*[0-9]*[ ]*//')
+	fi
+
+	[ -z "$LAST_CMD" ] && { echo "No previous command found"; return 1; }
+
+	local FIX
+	FIX=$(_cle_ai_query "The command '$LAST_CMD' failed with exit code $_EC. Generate ONLY the corrected command (no explanation). If no fix, output the original command.")
+	[ -z "$FIX" ] && return 1
+	echo "Suggested fix: $_CL$FIX$_CN"
+	_cleask "Execute?" && eval "$FIX"
+}

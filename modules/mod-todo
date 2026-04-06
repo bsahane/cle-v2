@@ -1,0 +1,140 @@
+##
+## ** mod-todo: Universal todolist accessible from anywhere **
+#* version: 2026-04-06
+
+CLE_TODO_FILE="${CLE_TODO_FILE:-$HOME/.cle-todo.md}"
+
+# Ensure todo file exists
+[ -f "$CLE_TODO_FILE" ] || echo "# CLE Todo List" > "$CLE_TODO_FILE"
+
+## `ltodo` - show current todo list
+ltodo () {
+	case "${1:-}" in
+	add|a)
+		shift
+		[ -z "$*" ] && { echo "Usage: ltodo add <task>"; return 1; }
+		local PRI=""
+		case "$1" in
+		-h) PRI="! "; shift ;;
+		esac
+		echo "- [ ] ${PRI}$* [$(date +%F)]" >> "$CLE_TODO_FILE"
+		echo "$_Cg+ Added:$_CN $*" ;;
+
+	done|d)
+		shift
+		local N=${1:?Usage: ltodo done <number>}
+		if [ "$(uname)" = "Darwin" ]; then
+			sed -i '' "${N}s/\- \[ \]/- [x]/" "$CLE_TODO_FILE" 2>/dev/null
+		else
+			sed -i "${N}s/\- \[ \]/- [x]/" "$CLE_TODO_FILE" 2>/dev/null
+		fi
+		echo "$_Cg✓ Task $N marked done$_CN" ;;
+
+	rm|remove)
+		shift
+		local N=${1:?Usage: ltodo rm <number>}
+		if [ "$(uname)" = "Darwin" ]; then
+			sed -i '' "${N}d" "$CLE_TODO_FILE" 2>/dev/null
+		else
+			sed -i "${N}d" "$CLE_TODO_FILE" 2>/dev/null
+		fi
+		echo "$_Cy- Removed line $N$_CN" ;;
+
+	clear)
+		_cleask "Remove completed tasks?" || return
+		if [ "$(uname)" = "Darwin" ]; then
+			sed -i '' '/\- \[x\]/d' "$CLE_TODO_FILE"
+		else
+			sed -i '/\- \[x\]/d' "$CLE_TODO_FILE"
+		fi
+		echo "Cleared completed tasks" ;;
+
+	edit|e)
+		${EDITOR:-vi} "$CLE_TODO_FILE" ;;
+
+	context|ctx)
+		shift
+		local CTX="${1:-}"
+		if [ -z "$CTX" ]; then
+			echo "$_CL=== Todo Contexts ===$_CN"
+			grep -o '@[a-zA-Z0-9_-]*' "$CLE_TODO_FILE" 2>/dev/null | sort -u | while read -r c; do
+				local count=$(grep -c "$c" "$CLE_TODO_FILE")
+				printf "  %-15s %d items\n" "$c" "$count"
+			done
+			return
+		fi
+		echo "$_CL=== @$CTX ===$_CN"
+		local LN=0
+		while IFS= read -r line; do
+			LN=$((LN + 1))
+			case "$line" in
+			*"@$CTX"*) _ltodo_format_line "$LN" "$line" ;;
+			esac
+		done < "$CLE_TODO_FILE" ;;
+
+	stats)
+		local TOTAL=$(grep -c '^\- \[' "$CLE_TODO_FILE" 2>/dev/null || echo 0)
+		local DONE=$(grep -c '^\- \[x\]' "$CLE_TODO_FILE" 2>/dev/null || echo 0)
+		local OPEN=$((TOTAL - DONE))
+		local HI=$(grep -c '^\- \[ \] !' "$CLE_TODO_FILE" 2>/dev/null || echo 0)
+		echo "$_CL=== Todo Stats ===$_CN"
+		printf "  Total:    %d\n" "$TOTAL"
+		printf "  $_Cg Open:$_CN    %d\n" "$OPEN"
+		printf "  $_Cr High:$_CN    %d\n" "$HI"
+		printf "  $_Cb Done:$_CN    %d\n" "$DONE"
+		[ $TOTAL -gt 0 ] && printf "  Progress: %d%%\n" "$((DONE * 100 / TOTAL))" ;;
+
+	help|h)
+		echo "Usage: ltodo [command]"
+		echo ""
+		echo "Commands:"
+		echo "  (none)          Show todo list"
+		echo "  add <task>      Add new task (-h for high priority)"
+		echo "  done <n>        Mark task #n as done"
+		echo "  rm <n>          Remove line #n"
+		echo "  clear           Remove completed tasks"
+		echo "  edit            Open in editor"
+		echo "  ctx [name]      Filter by @context"
+		echo "  stats           Show statistics"
+		echo ""
+		echo "Contexts: use @work @personal @project etc. in task text"
+		echo "File: $CLE_TODO_FILE" ;;
+
+	"")
+		echo "$_CL=== Todo List ===$_CN"
+		local LN=0
+		while IFS= read -r line; do
+			LN=$((LN + 1))
+			case "$line" in
+			"# "*) echo "$_CL$line$_CN" ;;
+			"") ;;
+			*) _ltodo_format_line "$LN" "$line" ;;
+			esac
+		done < "$CLE_TODO_FILE"
+		local OPEN=$(grep -c '^\- \[ \]' "$CLE_TODO_FILE" 2>/dev/null || echo 0)
+		echo ""
+		echo "$_Cb$OPEN open tasks | ltodo help for commands$_CN" ;;
+
+	*)
+		echo "Unknown: ltodo $1"
+		echo "Run 'ltodo help' for usage" ;;
+	esac
+}
+
+_ltodo_format_line () {
+	local N=$1 L=$2
+	case "$L" in
+	"# "*)
+		echo "$_CL$L$_CN" ;;
+	"- [x] "*)
+		printf "$_Cb%3d $_Cg✓$_Cb %s$_CN\n" "$N" "${L#- [x] }" ;;
+	"- [ ] ! "*)
+		printf "$_Cr%3d ● %s$_CN\n" "$N" "${L#- [ ] ! }" ;;
+	"- [ ] "*)
+		printf "%3d ○ %s\n" "$N" "${L#- [ ] }" ;;
+	"")
+		;;
+	*)
+		printf "%3d   %s\n" "$N" "$L" ;;
+	esac
+}

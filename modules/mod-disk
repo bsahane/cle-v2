@@ -1,0 +1,44 @@
+##
+## ** mod-disk: Disk and archive utilities **
+#* version: 2026-04-06
+
+## `ldiskusage [path]` - show top 20 largest files/dirs
+ldiskusage () {
+	local target=${1:-"."}
+	echo "Disk usage for: $target"
+	echo "--------------------------------------"
+	du -ah "$target" 2>/dev/null | sort -rh | head -n 20
+	echo "--------------------------------------"
+}
+
+## `lctar <path>` - create tar.gz archive (platform-aware)
+lctar () {
+	[ -z "$1" ] && { echo "Usage: lctar <directory_or_file>"; return 1; }
+	if [[ "$(uname)" == "Linux" ]] && tar --help 2>&1 | grep -q -- '--acls'; then
+		tar --selinux --acls --xattrs -czvf "${1}.tar.gz" "$1"
+	else
+		tar -czvf "${1}.tar.gz" "$1"
+	fi
+}
+
+## `lxtar <archive>` - extract tar archive (platform-aware)
+lxtar () {
+	[ -z "$1" ] && { echo "Usage: lxtar <archive>"; return 1; }
+	if [[ "$(uname)" == "Linux" ]] && tar --help 2>&1 | grep -q -- '--same-owner'; then
+		tar --same-owner -xvf "$1"
+	else
+		tar -xvf "$1"
+	fi
+}
+
+## `bkp <file>` - create timestamped backup
+bkp () {
+	[ -z "$1" ] && { echo "Usage: bkp <file>"; return 1; }
+	cp -p "$1" "${1}_$(date +%Y-%m-%d_%H-%M-%S).bkp"
+	echo "Backup: ${1}_$(date +%Y-%m-%d_%H-%M-%S).bkp"
+}
+
+## `totalsize <files...>` - calculate total size of files
+totalsize () {
+	ls -l "$@" | awk '{ total += $5 } END { printf "%.2f MB\n", total/1024/1024 }'
+}

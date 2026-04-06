@@ -1,0 +1,201 @@
+#!/bin/sh
+##
+## ** CLE : Command Live Environment **
+##
+#* author:  Michael Arbet (marbet@redhat.com)
+#* maintainer: Bhushan Sahane (bsahane@redhat.com)
+#* home:    https://github.com/micharbet/CLE
+#* version: 2026-04-06 (v2-modular)
+#* license: GNU GPL v2
+#* Copyright (C) 2016-2023 by Michael Arbet
+
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+
+# CLE v2 - Modular Architecture
+# Provides: colorful prompt, persistent aliases, rich history,
+# seamless remote sessions (lssh), modular extensions
+
+# Guard: only run in interactive shells
+[ -t 0 ] || return
+# Allow reload: if already loaded, reset source tracking
+[ -n "$CLE_EXE" ] && unset CLE_EXE
+# zsh: prevent glob errors on non-matching patterns
+[ "$ZSH_NAME" ] && setopt NULL_GLOB 2>/dev/null
+
+# --- Startup Sequence ---
+export CLE_RC
+_C=$SHELL:$BASH:$ZSH_NAME:$0
+_T=/var/tmp/$USER
+
+case $_C in
+*zsh::*zsh:*/rc*)
+	CLE_RC=$0 ;;
+*clerc*|*:*/rc*)
+	CLE_RC=$(cd "$(dirname "$0")"; pwd)/$(basename "$0")
+	SH=$SHELL
+	while [ "$1" ]; do
+		case $1 in
+		-b*) SH=$(which bash); export CLE_ARG='-b' ;;
+		-z*) SH=$(which zsh 2>/dev/null || which bash); export CLE_ARG='-z' ;;
+		-m)  export CLE_MOTD=$(uptime) ;;
+		*)   echo "$0: unknown option '$1'"; exit 1 ;;
+		esac
+		shift
+	done
+	export CLE_PROF=1
+	case $SH in
+	*zsh) export ZDOTDIR=$_T; mkdir -p $ZDOTDIR; ln -sf $CLE_RC $ZDOTDIR/.zshrc; exec zsh ;;
+	*)    exec bash --rcfile $0 ;;
+	esac ;;
+*bash:*bash)
+	CLE_RC=$BASH_SOURCE ;;
+*zsh:*zsh)
+	unset ZDOTDIR ;;
+*)
+	echo "CLE startup failed: 'case $_C'"; return ;;
+esac
+
+# --- Resolve Paths ---
+CLE_RD=$(cd "$(dirname "$CLE_RC")"; pwd)
+CLE_RC=$CLE_RD/$(basename "$CLE_RC")
+CLE_EXE=$CLE_RC
+CLE_SH=$(basename "$BASH$ZSH_NAME")
+CLE_VER=$(sed -n 's/^#\* version: //p' "$CLE_RC")
+CLE_SRC=https://raw.githubusercontent.com/micharbet/CLE/Zodiac
+CLE_LIB=$CLE_RD/lib
+
+# First-run: copy to ~/.cle-username if run as 'clerc'
+if [[ $CLE_RC =~ clerc ]]; then
+	CLE_RD=$HOME/.cle-$(whoami)
+	mkdir -m 755 -p $CLE_RD
+	CLE_1=$CLE_RD/rc
+	cp "$CLE_RC" "$CLE_1"
+	chmod 755 "$CLE_1"
+	CLE_RC=$CLE_1
+	CLE_RD=$(cd "$(dirname "$CLE_RC")"; pwd)
+	CLE_LIB=$CLE_RD/lib
+fi
+
+# Profile loading
+if [ -n "$CLE_PROF" ]; then
+	[ -f /etc/profile ] && . /etc/profile
+	[ -f "$HOME/.${CLE_SH}rc" ] && . "$HOME/.${CLE_SH}rc"
+	unset CLE_PROF
+fi
+unset -f alias unalias 2>/dev/null
+unalias aa h hh .. ... 2>/dev/null
+
+# --- Source Library Files ---
+# _clexe: source a file once (prevents double-sourcing)
+_clexe () {
+	[ -f "$1" ] || return 1
+	[[ $CLE_EXE =~ :$1[:$] ]] && return
+	CLE_EXE=$CLE_EXE:$1
+	. "$1"
+}
+
+# Source all lib/ files in order
+for _f in init utils colors prompt history aliases navigation sessions cle; do
+	_clexe "$CLE_LIB/${_f}.sh"
+done
+unset _f
+
+# --- Initialize Environment ---
+_cle_init_vars
+_cle_init_host
+_cle_init_dirs
+
+# MOTD
+if [ "$CLE_MOTD" ]; then
+	[ -f /etc/motd ] && cat /etc/motd
+	printf "\n$CLE_MOTD"
+	_clebold "\n CLE/$CLE_SH $CLE_VER\n"
+	unset CLE_MOTD
+fi
+
+# Inherited environment
+[ "$CLE_WS" ] && _clexe "$CLE_ENV"
+
+# Platform-specific defaults
+case $OSTYPE in
+linux*)   alias ls='ls --color=auto' ;;
+darwin*)  export CLICOLOR=1; export LSCOLORS=ExGxBxDxCxEgEdxbxgxcxd ;;
+FreeBSD*) alias ls='ls -G "$@"' ;;
+*)        alias ls='ls -F' ;;
+esac
+
+# Colorized grep (skip on busybox)
+if [ -L "$(command which grep)" ]; then
+	unalias grep egrep fgrep 2>/dev/null
+else
+	alias grep='grep --color=auto'
+fi
+
+# Modern CLI tool detection (Rust replacements)
+command -v eza >/dev/null 2>&1 && alias ls='eza --color=auto --group-directories-first'
+command -v bat >/dev/null 2>&1 && alias cat='bat --paging=never --style=plain'
+
+# Local overrides, aliases, tweaks, modules
+_clexe "$HOME/.cle-local"
+_clexe "$CLE_AL"
+_clexe "$CLE_TW"
+for M in "$CLE_D"/mod-*; do _clexe "$M"; done
+for M in "$CLE_RD"/modules/mod-*; do _clexe "$M"; done
+
+# PATH
+[[ -d $HOME/bin && ! $PATH =~ $HOME/bin ]] && PATH=$PATH:$HOME/bin
+
+# --- Build Prompt ---
+_cledefp
+[ "$CLE_WS" ] && _clepcp x
+[ "$TERM" != "$_C_" -o -z "$_CN" ] && _cletable
+[ -f "$CLE_D/cf" -a ! -f "$CLE_CF" ] && cp "$CLE_D/cf" "$CLE_CF"
+_cle_load_config
+_clepcp
+
+# Terminal-specific title
+case $TERM in
+linux)   CLE_PT='' ;;
+screen*) CLE_PT='\u'
+	printf "\e]0; screen: $CLE_USER@$CLE_FHN$_Ct\007"
+	_CT=$'\ek'; _Ct=$'\e\\' ;;
+*)       _CT=$'\e]0;'; _Ct=$'\007' ;;
+esac
+
+# Shell-specific settings
+if [ $BASH ]; then
+	shopt -s checkwinsize
+	_PE='\['; _Pe='\]'
+else
+	setopt PROMPT_SUBST SH_WORD_SPLIT NULL_GLOB
+	_PE='%{'; _Pe='%}'
+	_PN=$'\n'
+fi
+
+_cleps
+_cleclr ${CLE_CLR:-$_DC}
+PROMPT_COMMAND=precmd
+
+# Right prompt and transient prompt (Phase 8 UX)
+_cle_setup_rprompt
+_cle_setup_transient
+
+# Completions
+_cle_setup_completions
+
+# Record startup
+_clerh @ "$CLE_TTY" "[${STY:-${CLE_WS:-WS}},$CLE_SH]"
+
+# First-run notice
+[ "$CLE_1" ] && cat <<EOT
+ CLE started from command line.
+ To integrate into your profile, run:
+$_CL    cle deploy
+EOT
+
+[ -r . ] || cd
+
+unset _T _C _DC

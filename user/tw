@@ -1,0 +1,13 @@
+#
+# User tweak file - per-host customizations
+# Loaded after modules, before prompt finalization
+#
+CDPATH=.:..:$HOME
+
+# Auto-sudo on specific hosts
+case $USER@$HOSTNAME in
+bsahane@*aws.redhat.com|bsahane@*.rdu2.redhat.com|scripts09)
+	lsudo ;;
+root@*aws.redhat.com)
+	;;
+esac

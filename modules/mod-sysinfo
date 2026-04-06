@@ -1,0 +1,87 @@
+##
+## ** mod-sysinfo: System information dashboard **
+#* version: 2026-04-06
+
+## `sysinfo` - comprehensive system overview
+sysinfo () {
+	echo "$_CL=== System Information ===$_CN"
+	echo ""
+
+	printf "  $_CU%-15s$_Cu %s\n" "Hostname:" "$(hostname)"
+	printf "  $_CU%-15s$_Cu %s\n" "OS:" "$(uname -s) $(uname -r)"
+	printf "  $_CU%-15s$_Cu %s\n" "Arch:" "$(uname -m)"
+	printf "  $_CU%-15s$_Cu %s\n" "Uptime:" "$(uptime | sed 's/.*up //' | sed 's/,.*//')"
+	printf "  $_CU%-15s$_Cu %s\n" "Shell:" "$CLE_SH ($SHELL)"
+	printf "  $_CU%-15s$_Cu %s\n" "User:" "$USER"
+
+	echo ""
+	echo "$_CU CPU:$_Cu"
+	if [ "$(uname)" = "Darwin" ]; then
+		printf "  %-15s %s\n" "Model:" "$(sysctl -n machdep.cpu.brand_string 2>/dev/null)"
+		printf "  %-15s %s\n" "Cores:" "$(sysctl -n hw.ncpu 2>/dev/null)"
+	else
+		printf "  %-15s %s\n" "Model:" "$(grep 'model name' /proc/cpuinfo 2>/dev/null | head -1 | cut -d: -f2 | xargs)"
+		printf "  %-15s %s\n" "Cores:" "$(nproc 2>/dev/null || grep -c processor /proc/cpuinfo 2>/dev/null)"
+	fi
+
+	echo ""
+	echo "$_CU Memory:$_Cu"
+	if [ "$(uname)" = "Darwin" ]; then
+		local _MEM=$(sysctl -n hw.memsize 2>/dev/null)
+		[ -n "$_MEM" ] && printf "  %-15s %d GB\n" "Total:" "$((_MEM / 1073741824))"
+		local _USED=$(vm_stat 2>/dev/null | awk '/Pages active/ {print $3}' | tr -d '.')
+		[ -n "$_USED" ] && printf "  %-15s %d MB active\n" "Used:" "$((_USED * 4096 / 1048576))"
+	else
+		free -h 2>/dev/null | awk '/^Mem:/ {printf "  %-15s %s / %s\n", "Used/Total:", $3, $2}'
+	fi
+
+	echo ""
+	echo "$_CU Disk:$_Cu"
+	df -h / 2>/dev/null | awk 'NR==2 {printf "  %-15s %s used of %s (%s)\n", "Root:", $3, $2, $5}'
+
+	echo ""
+	echo "$_CU Network:$_Cu"
+	local _IP
+	if [ "$(uname)" = "Darwin" ]; then
+		_IP=$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null)
+	else
+		_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+	fi
+	printf "  %-15s %s\n" "Local IP:" "${_IP:-unknown}"
+	printf "  %-15s %s\n" "Public IP:" "$(curl -s ifconfig.me 2>/dev/null || echo 'unavailable')"
+}
+
+## `top5` - show top 5 processes by CPU and memory
+top5 () {
+	echo "$_CL=== Top 5 by CPU ===$_CN"
+	ps aux --sort=-%cpu 2>/dev/null | head -6 || ps -arcwwwxo 'pid %cpu %mem command' | head -6
+	echo ""
+	echo "$_CL=== Top 5 by Memory ===$_CN"
+	ps aux --sort=-%mem 2>/dev/null | head -6 || ps -amcwwwxo 'pid %cpu %mem command' | head -6
+}
+
+## `myip` - show public and local IP addresses
+myip () {
+	echo "$_CL=== IP Addresses ===$_CN"
+	echo ""
+	printf "  $_CU%-15s$_Cu " "Public:"
+	curl -s ifconfig.me 2>/dev/null || echo "unavailable"
+	echo ""
+	printf "  $_CU%-15s$_Cu " "Local:"
+	if [ "$(uname)" = "Darwin" ]; then
+		ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || echo "unknown"
+	else
+		hostname -I 2>/dev/null | awk '{print $1}' || echo "unknown"
+	fi
+}
+
+## `speedtest` - quick download speed test
+speedtest () {
+	echo "Testing download speed..."
+	local _START=$(date +%s)
+	curl -so /dev/null -w "%{speed_download}" "https://speed.cloudflare.com/__down?bytes=25000000" 2>/dev/null
+	local _END=$(date +%s)
+	local _DUR=$((_END - _START))
+	echo ""
+	echo "Duration: ${_DUR}s (25MB test file)"
+}

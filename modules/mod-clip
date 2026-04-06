@@ -1,0 +1,68 @@
+##
+## ** mod-clip: Cross-platform clipboard utilities **
+#* version: 2026-04-06
+
+# Detect clipboard command for current platform
+_cle_clip_cmd () {
+	case $OSTYPE in
+	darwin*)
+		echo "pbcopy" ;;
+	linux*)
+		if [ -n "$WAYLAND_DISPLAY" ]; then
+			command -v wl-copy >/dev/null && echo "wl-copy" && return
+		fi
+		command -v xclip >/dev/null && echo "xclip -selection clipboard" && return
+		command -v xsel >/dev/null && echo "xsel --clipboard --input" && return
+		;;
+	*) ;;
+	esac
+	# WSL detection
+	command -v clip.exe >/dev/null 2>&1 && echo "clip.exe" && return
+	echo ""
+}
+
+_cle_paste_cmd () {
+	case $OSTYPE in
+	darwin*)
+		echo "pbpaste" ;;
+	linux*)
+		if [ -n "$WAYLAND_DISPLAY" ]; then
+			command -v wl-paste >/dev/null && echo "wl-paste" && return
+		fi
+		command -v xclip >/dev/null && echo "xclip -selection clipboard -o" && return
+		command -v xsel >/dev/null && echo "xsel --clipboard --output" && return
+		;;
+	esac
+	command -v powershell.exe >/dev/null 2>&1 && echo "powershell.exe -command Get-Clipboard" && return
+	echo ""
+}
+
+## `clip` - copy stdin to clipboard (pipe: echo foo | clip)
+## `clip <text>` - copy argument to clipboard
+clip () {
+	local CMD
+	CMD=$(_cle_clip_cmd)
+	[ -z "$CMD" ] && { echo "No clipboard tool found. Install xclip, xsel, or wl-copy."; return 1; }
+
+	if [ $# -gt 0 ]; then
+		echo -n "$*" | eval "$CMD"
+	else
+		eval "$CMD"
+	fi
+	echo "Copied to clipboard."
+}
+
+## `paste` - paste from clipboard to stdout
+clpaste () {
+	local CMD
+	CMD=$(_cle_paste_cmd)
+	[ -z "$CMD" ] && { echo "No paste tool found."; return 1; }
+	eval "$CMD"
+}
+
+## `clipfile <file>` - copy file contents to clipboard
+clipfile () {
+	[ -z "$1" ] && { echo "Usage: clipfile <file>"; return 1; }
+	[ -f "$1" ] || { echo "File not found: $1"; return 1; }
+	clip < "$1"
+}

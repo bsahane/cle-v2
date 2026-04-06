@@ -1,0 +1,112 @@
+##
+## ** mod-timeline: Session timeline and activity visualization **
+#* version: 2026-04-06
+
+## `timeline [hours]` - show command timeline for current session
+timeline () {
+	local HOURS=${1:-4}
+	local SINCE
+	if date -v-1d +%s >/dev/null 2>&1; then
+		SINCE=$(date -v-${HOURS}H "+%F %T")
+	else
+		SINCE=$(date -d "$HOURS hours ago" "+%F %T" 2>/dev/null || date "+%F %T")
+	fi
+	local SID="$CLE_USER-$$"
+	echo "$_CL=== Session Timeline (last ${HOURS}h) ===$_CN"
+	echo ""
+	local prev_hour=""
+	while IFS=';' read -r dt sess dur ec dir cmd; do
+		[ -z "$dt" ] && continue
+		local hour="${dt:0:13}"
+		if [ "$hour" != "$prev_hour" ]; then
+			echo ""
+			echo "$_CU${hour}:00$_Cu"
+			prev_hour=$hour
+		fi
+		local marker
+		case "$ec" in
+		0)      marker="$_Cg  ●$_CN" ;;
+		'#'|@)  marker="$_Cy  ○$_CN" ;;
+		*)      marker="$_Cr  ✗$_CN" ;;
+		esac
+		local time_part="${dt:11:5}"
+		local short_cmd="${cmd:0:60}"
+		printf "%s %s  %s\n" "$marker" "$_Cb$time_part$_CN" "$short_cmd"
+	done < <(grep ";${SID};" "$CLE_HIST" | tail -n 200)
+	echo ""
+}
+
+## `timeline-all [hours]` - show command timeline for ALL sessions
+timeline-all () {
+	local HOURS=${1:-2}
+	echo "$_CL=== All Sessions Timeline (last ${HOURS}h) ===$_CN"
+	echo ""
+	local CUTOFF_DATE
+	if date -v-1d +%s >/dev/null 2>&1; then
+		CUTOFF_DATE=$(date -v-${HOURS}H "+%F %T")
+	else
+		CUTOFF_DATE=$(date -d "$HOURS hours ago" "+%F %T" 2>/dev/null || date "+%F %T")
+	fi
+	local prev_hour=""
+	tail -n 2000 "$CLE_HIST" | while IFS=';' read -r dt sess dur ec dir cmd; do
+		[ -z "$dt" ] && continue
+		[[ "$dt" < "$CUTOFF_DATE" ]] && continue
+		local hour="${dt:0:13}"
+		if [ "$hour" != "$prev_hour" ]; then
+			echo ""
+			echo "$_CU${hour}:00$_Cu"
+			prev_hour=$hour
+		fi
+		local marker
+		case "$ec" in
+		0)      marker="$_Cg●$_CN" ;;
+		'#'|@)  marker="$_Cy○$_CN" ;;
+		*)      marker="$_Cr✗$_CN" ;;
+		esac
+		local user="${sess%%-*}"
+		local time_part="${dt:11:5}"
+		local short_cmd="${cmd:0:50}"
+		printf " %s %s  $_Cb%-10s$_CN  %s\n" "$marker" "$time_part" "$user" "$short_cmd"
+	done
+	echo ""
+}
+
+## `activity [days]` - show daily command count heatmap
+activity () {
+	local DAYS=${1:-14}
+	echo "$_CL=== Activity (last ${DAYS} days) ===$_CN"
+	echo ""
+
+	local i=0
+	while [ $i -lt "$DAYS" ]; do
+		local DAY
+		if date -v-1d +%F >/dev/null 2>&1; then
+			DAY=$(date -v-${i}d "+%F")
+		else
+			DAY=$(date -d "$i days ago" "+%F" 2>/dev/null || break)
+		fi
+		local COUNT=$(grep -c "^$DAY" "$CLE_HIST" 2>/dev/null || echo 0)
+		local ERRORS=$(grep "^$DAY" "$CLE_HIST" 2>/dev/null | awk -F';' '$4 != "0" && $4 != "" && $4 != "@" && $4 != "#" && $4 != "*"' | wc -l | tr -d ' ')
+		local DOW
+		if date -v-1d +%a >/dev/null 2>&1; then
+			DOW=$(date -v-${i}d "+%a")
+		else
+			DOW=$(date -d "$i days ago" "+%a" 2>/dev/null || echo "???")
+		fi
+
+		local BAR=""
+		local j=0
+		local blocks=$((COUNT / 10))
+		[ $blocks -gt 40 ] && blocks=40
+		while [ $j -lt $blocks ]; do BAR="${BAR}█"; j=$((j+1)); done
+
+		local color=$_Cg
+		[ $COUNT -lt 10 ] && color=$_Cy
+		[ $COUNT -eq 0 ] && color=$_Cb
+
+		printf "  %-3s %-10s ${color}%4d${_CN} cmds ${_Cr}%3d${_CN} err  ${_Cg}%s${_CN}\n" \
+			"$DOW" "$DAY" "$COUNT" "$ERRORS" "$BAR"
+		i=$((i + 1))
+	done
+	echo ""
+}

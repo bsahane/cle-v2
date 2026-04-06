@@ -1,0 +1,56 @@
+##
+## ** mod-git: Git helpers **
+#* version: 2026-04-06
+
+## `gipul`           - git pull
+gipul () { git pull; }
+
+## `gipus`           - git push to origin/current branch
+gipus () {
+	local BRANCH
+	BRANCH=$(git symbolic-ref --short HEAD)
+	_clebold "git push -u origin $BRANCH"
+	git push -u origin "$BRANCH"
+}
+
+## `gicom [message]` - git commit (-a), opens editor if no message
+gicom () {
+	if [ $# -eq 0 ]; then
+		git commit -a
+	else
+		git commit -a -m "$*"
+	fi
+}
+
+## `gista`           - git status
+gista () { git status; }
+
+## `gilog [n]`       - git log (optional: last n entries)
+gilog () { git log ${1:+--oneline -n $1}; }
+
+## `gidif`           - git diff
+gidif () { git diff; }
+
+## `giout [branch]`  - git checkout with interactive branch selector
+giout () (
+	if [ "$1" ]; then
+		BR=$1
+	else
+		BRL=$(git branch --list --no-color | sed 's/\*//')
+		PS3="$_CL branch # $_CN"
+		select BR in $BRL; do [ "$BR" ] && break; done
+	fi
+	git checkout "$BR"
+)
+
+## `giadd [files]`   - git add (defaults to all)
+giadd () { git add "${@:-.}"; }
+
+## `gibr`            - list branches with current highlighted
+gibr () { git branch -v; }
+
+## `gistash`         - git stash with message
+gistash () { git stash push -m "${*:-WIP}"; }
+
+## `gipop`           - git stash pop
+gipop () { git stash pop; }

@@ -1,0 +1,91 @@
+##
+## ** mod-audit: Command audit trail with structured logging **
+#* version: 2026-04-06
+
+CLE_AUDIT_LOG="${CLE_AUDIT_LOG:-$HOME/.cle-audit.log}"
+
+# Structured audit log: timestamp|user|host|tty|pwd|exit|command
+_cle_audit_record () {
+	local CMD="$1" EC="$2"
+	local TS=$(date "+%F %T%z")
+	local TTY=$(tty 2>/dev/null || echo "none")
+	printf '%s|%s|%s|%s|%s|%s|%s\n' \
+		"$TS" "$CLE_USER" "$CLE_FHN" "$TTY" "$PWD" "$EC" "$CMD" >> "$CLE_AUDIT_LOG"
+}
+
+## `audit [search] [count]` - view audit log
+audit () {
+	[ ! -f "$CLE_AUDIT_LOG" ] && { echo "No audit log found at $CLE_AUDIT_LOG"; return 1; }
+	local SEARCH=$1 COUNT=${2:-50}
+	echo "$_CL=== CLE Audit Log ===$_CN"
+	if [ -n "$SEARCH" ]; then
+		grep -i "$SEARCH" "$CLE_AUDIT_LOG" | tail -n "$COUNT" | _cle_audit_format
+	else
+		tail -n "$COUNT" "$CLE_AUDIT_LOG" | _cle_audit_format
+	fi
+}
+
+_cle_audit_format () {
+	while IFS='|' read -r ts user host tty pwd ec cmd; do
+		local CE
+		[ "$ec" = "0" ] && CE=$_Cg || CE=$_Cr
+		printf "$_CB%s $_Cb%s@%s $CE%-3s $_CN%s\n" "$ts" "$user" "$host" "$ec" "$cmd"
+	done
+}
+
+## `audit-stats` - audit log statistics
+audit-stats () {
+	[ ! -f "$CLE_AUDIT_LOG" ] && { echo "No audit log"; return 1; }
+	echo "$_CL=== Audit Statistics ===$_CN"
+	echo ""
+	echo "$_CU By User:$_Cu"
+	awk -F'|' '{print $2}' "$CLE_AUDIT_LOG" | sort | uniq -c | sort -rn | head -10
+	echo ""
+	echo "$_CU By Host:$_Cu"
+	awk -F'|' '{print $3}' "$CLE_AUDIT_LOG" | sort | uniq -c | sort -rn | head -10
+	echo ""
+	echo "$_CU Error Rate:$_Cu"
+	local total errors
+	total=$(wc -l < "$CLE_AUDIT_LOG" | tr -d ' ')
+	errors=$(awk -F'|' '$6 != "0" && $6 != ""' "$CLE_AUDIT_LOG" | wc -l | tr -d ' ')
+	printf "  Total: %s | Errors: %s | Rate: %d%%\n" "$total" "$errors" "$((errors * 100 / (total > 0 ? total : 1)))"
+	echo ""
+	echo "$_CU Top 20 Commands:$_Cu"
+	awk -F'|' '{cmd=$7; gsub(/^[[:space:]]+/, "", cmd); split(cmd,a," "); print a[1]}' "$CLE_AUDIT_LOG" | sort | uniq -c | sort -rn | head -20
+}
+
+## `audit-export [json|csv]` - export audit log
+audit-export () {
+	[ ! -f "$CLE_AUDIT_LOG" ] && { echo "No audit log"; return 1; }
+	local FMT=${1:-csv}
+	case $FMT in
+	csv)
+		echo "timestamp,user,host,tty,directory,exit_code,command"
+		awk -F'|' '{printf "\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\"\n",$1,$2,$3,$4,$5,$6,$7}' "$CLE_AUDIT_LOG" ;;
+	json)
+		echo "["
+		local first=1
+		while IFS='|' read -r ts user host tty pwd ec cmd; do
+			[ $first -eq 1 ] && first=0 || echo ","
+			printf '  {"timestamp":"%s","user":"%s","host":"%s","tty":"%s","directory":"%s","exit_code":"%s","command":"%s"}' \
+				"$ts" "$user" "$host" "$tty" "$pwd" "$ec" "$cmd"
+		done < "$CLE_AUDIT_LOG"
+		echo ""
+		echo "]" ;;
+	*) echo "Usage: audit-export [json|csv]" ;;
+	esac
+}
+
+# Hook into precmd if audit is enabled
+if [ "${CLE_AUDIT:-0}" = 1 ]; then
+	_cle_audit_hook () {
+		local CMD
+		if [ "$ZSH_NAME" ]; then
+			CMD=$(fc -ln -1 2>/dev/null)
+		else
+			CMD=$(HISTTIMEFORMAT='' history 1 2>/dev/null | sed 's/^[ ]*[0-9]*[ ]*//')
+		fi
+		CMD="${CMD#"${CMD%%[![:space:]]*}"}"
+		[ -n "$CMD" ] && _cle_audit_record "$CMD" "$_EC"
+	}
+fi

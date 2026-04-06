@@ -1,0 +1,77 @@
+##
+## ** mod-ssh: SSH agent and key management **
+#* version: 2026-04-06
+
+## `sshkeys` - list loaded SSH keys with fingerprints
+sshkeys () {
+	if ! ssh-add -l >/dev/null 2>&1; then
+		echo "No SSH agent running or no keys loaded."
+		echo "Start agent: eval \$(ssh-agent)"
+		return 1
+	fi
+	echo "Loaded SSH keys:"
+	echo "--------------------------------------"
+	ssh-add -l | while read -r bits fp comment; do
+		printf "  $_Cg%-50s$_CN %s bits\n" "$comment" "$bits"
+	done
+	echo "--------------------------------------"
+	echo "Total: $(ssh-add -l | wc -l | tr -d ' ') keys"
+}
+
+## `sshload [key]` - load SSH key (default: ~/.ssh/id_*)
+sshload () {
+	if [ -n "$1" ]; then
+		ssh-add "$1"
+	else
+		local loaded=0
+		for key in "$HOME/.ssh/id_"*; do
+			[ -f "$key" ] || continue
+			[[ "$key" =~ \.pub$ ]] && continue
+			echo -n "Loading $(basename "$key")... "
+			if ssh-add "$key" 2>/dev/null; then
+				echo "OK"
+				((loaded++))
+			else
+				echo "skipped"
+			fi
+		done
+		[ $loaded -eq 0 ] && echo "No keys found in ~/.ssh/"
+	fi
+}
+
+## `sshagent` - show SSH agent status and forwarding info
+sshagent () {
+	echo "SSH Agent Status"
+	echo "--------------------------------------"
+	if [ -n "$SSH_AUTH_SOCK" ]; then
+		printf "  %-20s $_Cg%s$_CN\n" "Agent socket:" "$SSH_AUTH_SOCK"
+		local kc
+		kc=$(ssh-add -l 2>/dev/null | wc -l | tr -d ' ')
+		printf "  %-20s %s\n" "Loaded keys:" "$kc"
+	else
+		printf "  %-20s $_Cr%s$_CN\n" "Agent:" "not running"
+	fi
+
+	if [ -n "$SSH_CONNECTION" ]; then
+		local parts
+		parts=($SSH_CONNECTION)
+		printf "  %-20s %s -> %s:%s\n" "SSH connection:" "${parts[0]}:${parts[1]}" "${parts[2]}" "${parts[3]}"
+		if [ -n "$SSH_AUTH_SOCK" ]; then
+			printf "  %-20s $_Cg%s$_CN\n" "Agent forwarding:" "active"
+		else
+			printf "  %-20s $_Cy%s$_CN\n" "Agent forwarding:" "not forwarded"
+		fi
+	else
+		printf "  %-20s %s\n" "SSH connection:" "local session"
+	fi
+	echo "--------------------------------------"
+}
+
+## `sshfp <host>` - show SSH host key fingerprints
+sshfp () {
+	local host=${1:?Usage: sshfp <host>}
+	echo "Host key fingerprints for $host:"
+	echo "--------------------------------------"
+	ssh-keyscan "$host" 2>/dev/null | ssh-keygen -l -f - 2>/dev/null
+	echo "--------------------------------------"
+}

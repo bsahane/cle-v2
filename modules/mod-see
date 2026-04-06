@@ -1,0 +1,74 @@
+##
+## ** mod-see: Live log viewer with highlighting and word counting **
+#* version: 2026-04-06
+
+## `see [-t sec] [-f file|-l] [-i] [-g regexp] [RE ...]`
+## Continuously reads stdin or file, highlights keywords,
+## prints timestamps and keyword counts at intervals
+see () (
+	TSTAMP=60
+	INFILE=""
+	RE=""
+	GREX=
+	IGN=
+
+	typeset -A WORD_COUNT
+
+	while getopts "ht:f:g:il" OPT; do
+		case $OPT in
+		f)  INFILE=$OPTARG
+		    [ -f "$OPTARG" ] || { echo "file $OPTARG not found"; exit 1; } ;;
+		l)  INFILE=/var/log/messages ;;
+		g)  GREX="/$OPTARG/!d" ;;
+		i)  IGN=i ;;
+		t)  TSTAMP=$OPTARG ;;
+		*)  echo "Usage: see [-t sec] [-f file|-l] [-i] [-g regexp] [WORD ...]"; exit 1 ;;
+		esac
+	done
+	shift $((OPTIND-1))
+
+	HICOLORS="MGYR"
+	CI=${#HICOLORS}
+	for WORD in "$@"; do
+		WORD=${WORD/:/\\:}
+		[ $CI -gt 0 ] && ((CI--))
+		eval "HC=\$_C${HICOLORS:$CI:1}"
+		RE="$RE;s:\($WORD\):$HC\1$_CN:g$IGN"
+		WORD_COUNT["$WORD"]=0
+	done
+
+	_see_keys () {
+		if [ "$ZSH_NAME" ]; then
+			echo "${(k)WORD_COUNT[@]}"
+		else
+			echo "${!WORD_COUNT[@]}"
+		fi
+	}
+
+	_see_process () {
+		local LAST_TIMESTAMP=$(date +%s)
+		while IFS= read -r line; do
+			local CURRENT_TIME=$(date +%s)
+			for word in "$@"; do
+				[[ $line =~ $word ]] && WORD_COUNT["$word"]=$((WORD_COUNT["$word"] + 1))
+			done
+			echo "$line" | sed -e "$RE"
+
+			if (( CURRENT_TIME - LAST_TIMESTAMP >= TSTAMP && TSTAMP > 0 )); then
+				local COUNT_STR=""
+				local _k
+				for _k in $(_see_keys); do
+					COUNT_STR+="\"$_k\" [${WORD_COUNT[$_k]}] "
+				done
+				echo -e "$_CB[$(date '+%Y-%m-%d %T')] ${INFILE:-STDIN} $COUNT_STR$_CN"
+				LAST_TIMESTAMP=$CURRENT_TIME
+			fi
+		done
+	}
+
+	if [ -n "$INFILE" ]; then
+		tail -f "$INFILE" | _see_process "$@"
+	else
+		_see_process "$@"
+	fi
+)

@@ -1,0 +1,74 @@
+##
+## ** mod-dns: DNS diagnostic utilities **
+#* version: 2026-04-06
+
+## `lmxcheck <domain> [dns]` - verify MX, TXT, A, NS, CNAME records
+lmxcheck () {
+	local domain=$1 dns_server=${2:-} server_flag=""
+
+	if [ -z "$domain" ]; then
+		echo "Usage: lmxcheck <domain> [dns_server]"
+		return 1
+	fi
+
+	if [ -n "$dns_server" ]; then
+		server_flag="@${dns_server}"
+		echo "Using DNS server: $dns_server"
+	else
+		echo "Using default DNS"
+	fi
+
+	echo "DNS records for: $domain"
+	echo "--------------------------------------"
+
+	echo "MX Records:"
+	dig +short $server_flag MX "$domain" | while read -r priority server; do
+		printf "  Priority: %s  Server: %s\n" "$priority" "$server"
+	done
+	echo "--------------------------------------"
+
+	echo "TXT Records:"
+	dig +short $server_flag TXT "$domain" | while read -r txt; do
+		printf "  %s\n" "$txt"
+	done
+	echo "--------------------------------------"
+
+	echo "A Records:"
+	dig +short $server_flag A "$domain" | while read -r ip; do
+		printf "  %s\n" "$ip"
+	done
+	echo "--------------------------------------"
+
+	echo "NS Records:"
+	dig +short $server_flag NS "$domain" | while read -r ns; do
+		printf "  %s\n" "$ns"
+	done
+	echo "--------------------------------------"
+
+	echo "CNAME Records:"
+	dig +short $server_flag CNAME "$domain" | while read -r cname; do
+		printf "  %s\n" "$cname"
+	done
+	echo "--------------------------------------"
+}
+
+## `ldnslookup <domain> [resolver]` - resolve via specific DNS server
+ldnslookup () {
+	local domain=$1 resolver=${2:-"8.8.8.8"}
+
+	if [ -z "$domain" ]; then
+		echo "Usage: ldnslookup <domain> [resolver]"
+		return 1
+	fi
+
+	echo "Resolving $domain via $resolver"
+	echo "--------------------------------------"
+	local types="A MX TXT NS"
+	for type in $types; do
+		echo "$type Records:"
+		dig "@$resolver" +short "$type" "$domain" | while read -r rec; do
+			printf "  %s\n" "$rec"
+		done
+		echo "--------------------------------------"
+	done
+}

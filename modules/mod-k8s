@@ -1,0 +1,71 @@
+##
+## ** mod-k8s: Kubernetes productivity shortcuts **
+#* version: 2026-04-06
+
+command -v kubectl >/dev/null 2>&1 || return
+
+alias k='kubectl'
+alias kx='kubectl config use-context'
+alias kns='kubectl config set-context --current --namespace'
+
+## `kpods [namespace]` - list pods with status colors
+kpods () {
+	local NS=""
+	[ -n "$1" ] && NS="-n $1"
+	kubectl get pods $NS -o wide 2>/dev/null | while IFS= read -r line; do
+		case "$line" in
+		*Running*) echo "$_Cg$line$_CN" ;;
+		*Error*|*CrashLoop*|*Failed*) echo "$_Cr$line$_CN" ;;
+		*Pending*|*Init*|*ContainerCreating*) echo "$_Cy$line$_CN" ;;
+		*Completed*|*Succeeded*) echo "$_Cb$line$_CN" ;;
+		*) echo "$line" ;;
+		esac
+	done
+}
+
+## `klog <pod> [container]` - follow pod logs
+klog () {
+	local POD=${1:?Usage: klog <pod> [container]}
+	shift
+	local ARGS=""
+	[ -n "$1" ] && ARGS="-c $1"
+	kubectl logs -f --tail 100 $ARGS "$POD"
+}
+
+## `kexec <pod> [cmd]` - exec into pod (default: sh)
+kexec () {
+	local POD=${1:?Usage: kexec <pod> [command]}
+	shift
+	kubectl exec -it "$POD" -- "${@:-sh}"
+}
+
+## `kctx` - list and switch kubernetes contexts (fzf if available)
+kctx () {
+	if [ -n "$1" ]; then
+		kubectl config use-context "$1"
+		return
+	fi
+	if command -v fzf >/dev/null 2>&1; then
+		local ctx
+		ctx=$(kubectl config get-contexts -o name 2>/dev/null | fzf --prompt="k8s context> ")
+		[ -n "$ctx" ] && kubectl config use-context "$ctx"
+	else
+		kubectl config get-contexts
+	fi
+}
+
+## `kevents [namespace]` - show recent events
+kevents () {
+	local NS=""
+	[ -n "$1" ] && NS="-n $1"
+	kubectl get events $NS --sort-by='.lastTimestamp' 2>/dev/null | tail -20
+}
+
+## `kres` - show resource usage (top pods/nodes)
+kres () {
+	echo "$_CL=== Node Resources ===$_CN"
+	kubectl top nodes 2>/dev/null || echo "metrics-server not available"
+	echo ""
+	echo "$_CL=== Pod Resources (top 10) ===$_CN"
+	kubectl top pods --sort-by=cpu 2>/dev/null | head -11 || echo "metrics-server not available"
+}

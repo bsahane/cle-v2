@@ -1,0 +1,138 @@
+##
+## ** mod-cert: SSL/TLS certificate utilities **
+#* version: 2026-04-06
+
+## `lcert <host|file> [port]` - inspect SSL certificate details
+lcert () {
+	if [ $# -eq 0 ]; then
+		echo "Usage: lcert <hostFQDN> [port] | lcert <cert_file>"
+		return 1
+	fi
+
+	local cert_info
+	if [ -f "$1" ]; then
+		cert_info=$(openssl x509 -in "$1" -noout -text)
+		[ $? -ne 0 ] && { echo "Failed to read certificate: $1"; return 1; }
+	else
+		local host=$1 port=${2:-443}
+		echo "Fetching certificate from $host:$port..."
+		cert_info=$(echo | openssl s_client -connect "$host:$port" -servername "$host" 2>/dev/null | openssl x509 -noout -text)
+		[ $? -ne 0 -o -z "$cert_info" ] && { echo "Failed to connect to $host:$port"; return 1; }
+	fi
+
+	local start_date end_date issuer sans
+	start_date=$(echo "$cert_info" | awk -F': ' '/Not Before/ {print $2}')
+	end_date=$(echo "$cert_info" | awk -F': ' '/Not After/ {print $2}')
+	issuer=$(echo "$cert_info" | awk -F': ' '/Issuer/ {print $2}')
+	sans=$(echo "$cert_info" | awk '/X509v3 Subject Alternative Name/{getline; print}' | sed 's/, /\n/g')
+
+	local current_epoch expiry_epoch remaining
+	current_epoch=$(date +%s)
+	# Cross-platform date parsing (GNU vs BSD)
+	expiry_epoch=$(date -d "$end_date" +%s 2>/dev/null)
+	if [ -z "$expiry_epoch" ]; then
+		# macOS BSD date: try common OpenSSL output formats
+		local _fmt
+		for _fmt in "%b %d %T %Y %Z" "%b  %d %T %Y %Z" "%Y-%m-%d %T"; do
+			expiry_epoch=$(date -j -f "$_fmt" "$end_date" +%s 2>/dev/null) && break
+		done
+	fi
+	[ -z "$expiry_epoch" ] && { echo "Error parsing expiry date: $end_date"; return 1; }
+	remaining=$(( (expiry_epoch - current_epoch) / 86400 ))
+
+	local color
+	if [ $remaining -gt 30 ]; then color=$_Cg
+	elif [ $remaining -gt 0 ]; then color=$_Cy
+	else color=$_Cr; fi
+
+	echo ""
+	echo "Certificate Details"
+	echo "-------------------------------------"
+	echo "Start Date   : $start_date"
+	printf "Expiry Date  : ${color}$end_date (${remaining} days)${_CN}\n"
+	echo "Issuer       : $issuer"
+	echo "SANs:"
+	echo "$sans" | while read -r san; do
+		[ -n "$san" ] && echo "  - $san"
+	done
+	echo "-------------------------------------"
+
+	echo -n "View full certificate? (y/N): "
+	read -r response
+	case "$response" in [Yy]*) echo "$cert_info" ;; esac
+}
+
+## `lciphertest <host> [port]` - test available SSL/TLS ciphers
+lciphertest () {
+	local host=$1 port=${2:-443}
+	[ -z "$host" ] && { echo "Usage: lciphertest <host> [port]"; return 1; }
+
+	echo "Testing ciphers for $host:$port..."
+	echo "--------------------------------------"
+	openssl s_client -connect "$host:$port" -tls1_2 </dev/null 2>&1 | grep -i "cipher"
+	echo "--------------------------------------"
+}
+
+## `lcert-bulk <file|host...>` - check certificates for multiple hosts
+lcert-bulk () {
+	if [ $# -eq 0 ]; then
+		echo "Usage: lcert-bulk host1 host2 ...   OR   lcert-bulk <hosts-file>"
+		return 1
+	fi
+
+	local HOSTS=()
+	if [ $# -eq 1 ] && [ -f "$1" ]; then
+		while IFS= read -r line; do
+			line="${line%%#*}"
+			line="${line#"${line%%[![:space:]]*}"}"
+			[ -n "$line" ] && HOSTS+=("$line")
+		done < "$1"
+	else
+		HOSTS=("$@")
+	fi
+
+	printf "$_CL%-35s %-12s %-8s %s$_CN\n" "HOST" "EXPIRY" "DAYS" "STATUS"
+	echo "------------------------------------------------------------------------"
+
+	local h port host
+	for h in "${HOSTS[@]}"; do
+		port=443
+		host="$h"
+		case "$h" in
+		*:*) host="${h%%:*}"; port="${h##*:}" ;;
+		esac
+
+		local end_date expiry_epoch remaining color status
+		end_date=$(echo | openssl s_client -connect "$host:$port" -servername "$host" 2>/dev/null | \
+			openssl x509 -noout -enddate 2>/dev/null | sed 's/notAfter=//')
+
+		if [ -z "$end_date" ]; then
+			printf "$_Cr%-35s %-12s %-8s %s$_CN\n" "$host:$port" "N/A" "N/A" "CONNECTION FAILED"
+			continue
+		fi
+
+		local current_epoch=$(date +%s)
+		expiry_epoch=$(date -d "$end_date" +%s 2>/dev/null)
+		if [ -z "$expiry_epoch" ]; then
+			local _fmt
+			for _fmt in "%b %d %T %Y %Z" "%b  %d %T %Y %Z"; do
+				expiry_epoch=$(date -j -f "$_fmt" "$end_date" +%s 2>/dev/null) && break
+			done
+		fi
+
+		if [ -n "$expiry_epoch" ]; then
+			remaining=$(( (expiry_epoch - current_epoch) / 86400 ))
+			local exp_short=$(echo "$end_date" | awk '{print $1, $2, $4}')
+			if [ $remaining -gt 30 ]; then
+				color=$_Cg; status="OK"
+			elif [ $remaining -gt 0 ]; then
+				color=$_Cy; status="EXPIRING SOON"
+			else
+				color=$_Cr; status="EXPIRED"
+			fi
+			printf "${color}%-35s %-12s %-8s %s${_CN}\n" "$host:$port" "$exp_short" "${remaining}d" "$status"
+		else
+			printf "$_Cy%-35s %-12s %-8s %s$_CN\n" "$host:$port" "$end_date" "?" "PARSE ERROR"
+		fi
+	done
+}

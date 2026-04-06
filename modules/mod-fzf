@@ -1,0 +1,66 @@
+##
+## ** mod-fzf: FZF-powered enhancements (file finder, process killer, etc.) **
+#* version: 2026-04-06
+#* requires: fzf
+
+command -v fzf >/dev/null 2>&1 || return
+
+## `ff [dir]` - fuzzy file finder (recursive)
+ff () {
+	local DIR="${1:-.}"
+	local selected
+	selected=$(find "$DIR" -type f 2>/dev/null | fzf --preview='head -50 {} 2>/dev/null || echo "[binary]"' --prompt="file> ")
+	[ -n "$selected" ] && echo "$selected"
+}
+
+## `fd [dir]` - fuzzy directory finder
+fd () {
+	local DIR="${1:-.}"
+	local selected
+	selected=$(find "$DIR" -type d 2>/dev/null | fzf --prompt="dir> ")
+	[ -n "$selected" ] && cd "$selected"
+}
+
+## `fkill` - fuzzy process killer
+fkill () {
+	local pid
+	pid=$(ps -ef | sed 1d | fzf --multi --header="Select process(es) to kill" | awk '{print $2}')
+	[ -n "$pid" ] && echo "$pid" | while read -r p; do
+		echo "Killing PID $p..."
+		kill "${1:--9}" "$p" 2>/dev/null
+	done
+}
+
+## `fenv [pattern]` - fuzzy environment variable viewer
+fenv () {
+	local selected
+	selected=$(env | sort | fzf --prompt="env> " --query="$1")
+	[ -n "$selected" ] && echo "$selected"
+}
+
+## `fmod` - fuzzy module browser (view module functions)
+fmod () {
+	local mod
+	mod=$(ls "$CLE_RD"/modules/mod-* "$CLE_D"/mod-* 2>/dev/null | fzf --prompt="module> " \
+		--preview='grep "^##" {} | sed "s/## //"')
+	[ -n "$mod" ] && {
+		echo "$_CL=== $(basename "$mod") ===$_CN"
+		grep "^##" "$mod" | sed "s/^## /  /"
+	}
+}
+
+## `fh` - fuzzy shell history (alternative to hhi, works in both shells)
+fh () {
+	local cmd
+	if [ "$ZSH_NAME" ]; then
+		cmd=$(fc -l 1 | awk '{$1=""; print substr($0,2)}' | fzf --tac --no-sort --prompt="history> ")
+	else
+		cmd=$(history | awk '{$1=""; print substr($0,2)}' | fzf --tac --no-sort --prompt="history> ")
+	fi
+	[ -z "$cmd" ] && return
+	if [ "$ZSH_NAME" ]; then
+		print -z "$cmd"
+	else
+		echo "$cmd"
+	fi
+}

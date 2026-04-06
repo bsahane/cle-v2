@@ -1,0 +1,55 @@
+##
+## ** mod-note: Quick terminal notes with tagging **
+#* version: 2026-04-06
+
+CLE_NOTES_DIR="${CLE_NOTES_DIR:-$HOME/.cle-notes}"
+mkdir -p "$CLE_NOTES_DIR" 2>/dev/null
+
+## `note <text>` - capture a quick note with timestamp
+note () {
+	case "${1:-}" in
+	"")
+		echo "$_CL=== Recent Notes ===$_CN"
+		local NF="$CLE_NOTES_DIR/notes.md"
+		[ -f "$NF" ] || { echo "No notes yet. Usage: note <text>"; return; }
+		tail -20 "$NF" | while IFS= read -r line; do
+			case "$line" in
+			"## "*)  echo "$_CU${line#\#\# }$_Cu" ;;
+			"- ["*"]"*) echo "  $line" ;;
+			*) echo "  $line" ;;
+			esac
+		done ;;
+
+	search|find)
+		shift
+		[ -z "$1" ] && { echo "Usage: note search <term>"; return 1; }
+		grep -rn "$*" "$CLE_NOTES_DIR" 2>/dev/null | head -20 ;;
+
+	list)
+		echo "$_CL=== Note Files ===$_CN"
+		ls -lh "$CLE_NOTES_DIR" 2>/dev/null | awk 'NR>1{printf "  %-30s %s\n", $NF, $5}' ;;
+
+	edit)
+		${EDITOR:-vi} "$CLE_NOTES_DIR/notes.md" ;;
+
+	save)
+		shift
+		local FNAME=${1:?Usage: note save <filename>}
+		local DEST="$CLE_NOTES_DIR/${FNAME}.md"
+		echo "# $FNAME - $(date +%F)" > "$DEST"
+		echo "" >> "$DEST"
+		echo "Type note content (Ctrl+D to save):"
+		cat >> "$DEST"
+		echo ""
+		echo "$_Cg✓ Saved:$_CN $DEST" ;;
+
+	*)
+		local NF="$CLE_NOTES_DIR/notes.md"
+		local TODAY=$(date +%F)
+		local LAST_DATE=""
+		[ -f "$NF" ] && LAST_DATE=$(grep -o '^## [0-9-]*' "$NF" | tail -1 | sed 's/## //')
+		[ "$LAST_DATE" != "$TODAY" ] && echo "\n## $TODAY" >> "$NF"
+		echo "- [$(date +%H:%M)] $*" >> "$NF"
+		echo "$_Cg+ Noted$_CN" ;;
+	esac
+}
