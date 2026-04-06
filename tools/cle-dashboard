@@ -115,40 +115,45 @@ _print_at() {
 
 _draw_tabs() {
     local x=0 i label
+    local icons=("◈" "⚙" "📋" "🌐" "⚡" "🔒" "💾")
+
+    # Title line (row 0)
     _goto 0 0
-    printf "%s" "$BG_BLK"
+    local hostname os_type
+    hostname=$(hostname -s 2>/dev/null || hostname)
+    os_type=$(uname -s)
+    local ts
+    ts=$(date +"%H:%M:%S")
+    printf "%s ◆ CLE Dashboard  %s│%s  %s%s  %s│%s  %s%s  %s│%s  %s%s %s" \
+        "$BG_MAG$C_BWHT$C_BOLD" \
+        "$C_BYEL" "$C_BWHT" \
+        "$C_BYEL" "$hostname" \
+        "$C_BWHT" "$C_BYEL" \
+        "$C_BCYN" "$os_type" \
+        "$C_BWHT" "$C_BYEL" \
+        "$C_BWHT" "$ts" "$C_RESET$BG_MAG"
+    printf "%-*s%s" "$((COLS - 50 - ${#hostname} - ${#os_type}))" "" "$C_RESET"
+
+    # Tab bar (row 1)
+    _goto 1 0
+    x=0
     for ((i=0; i<${#TABS[@]}; i++)); do
         label=" $((i+1)):${TABS[$i]} "
         if [ "$i" -eq "$ACTIVE_TAB" ]; then
-            printf "%s%s%s%s" "$BG_BLU$C_BWHT$C_BOLD" "$label" "$C_RESET$BG_BLK" ""
+            printf "%s %s%s %s" "$BG_CYN$C_BLK$C_BOLD" "${icons[$i]}" "$label" "$C_RESET"
         else
-            printf "%s%s%s" "$C_CYN" "$label" "$C_RESET$BG_BLK"
+            printf "%s %s%s %s" "$BG_BLK$C_CYN" "${icons[$i]}" "$label" "$C_RESET$BG_BLK"
         fi
-        x=$((x + ${#label}))
+        x=$((x + ${#label} + 3))
     done
-    # Fill rest of line
-    printf "%-*s" "$((COLS - x))" ""
-    printf "%s" "$C_RESET"
+    printf "%s%-*s%s" "$BG_BLK" "$((COLS - x))" "" "$C_RESET"
 
-    # Title line
-    local hostname
-    hostname=$(hostname -s 2>/dev/null || hostname)
-    local ts
-    ts=$(date +"%H:%M:%S")
-    _goto 1 0
-    printf "%s%s %s%s  %s%s%s  %s%s%s" \
-        "$BG_MAG$C_BWHT$C_BOLD" \
-        " CLE Dashboard" \
-        "$C_RESET$BG_MAG$C_BWHT" \
-        "" \
-        "$C_BYEL" "$hostname" "$C_RESET$BG_MAG" \
-        "$C_BWHT" "$ts" "$C_RESET$BG_MAG"
-    printf "%-*s%s" "$((COLS - 30 - ${#hostname} - ${#ts}))" "" "$C_RESET"
-
-    # Separator
+    # Separator with styled corners
     _goto 2 0
-    printf "%s%s%s" "$C_CYN" "" "$C_RESET"
-    _hline 2 0 "$COLS" "$BX_H" "$C_CYN"
+    printf "%s%s" "$C_BCYN$C_BOLD" "$BX_TLR"
+    local j
+    for ((j=0; j<COLS-2; j++)); do printf "%s" "$BX_HD"; done
+    printf "%s%s" "$BX_TRR" "$C_RESET"
 }
 
 # ── Status Bar ───────────────────────────────────────────────────────────────
@@ -159,17 +164,26 @@ _draw_status() {
     local end=$((SCROLL + visible))
     [ "$end" -gt "$total" ] && end=$total
 
+    # Bottom separator
+    _goto $((ROWS - 3)) 0
+    printf "%s%s" "$C_BCYN" "$BX_BLD"
+    local j
+    for ((j=0; j<COLS-2; j++)); do printf "%s" "$BX_HD"; done
+    printf "%s%s" "$BX_BRD" "$C_RESET"
+
     if [ "$FILTERING" -eq 1 ]; then
         _fill_line $((ROWS - 2)) "$BG_GRN$C_BLK$C_BOLD" \
-            " FILTER: ${FILTER}▌  (Enter=apply  Esc=cancel)"
+            " 🔍 FILTER: ${FILTER}▌  (Enter=apply  Esc=cancel)"
     else
         local filter_hint=""
-        [ -n "$FILTER" ] && filter_hint="  Filter: '$FILTER'"
-        _fill_line $((ROWS - 2)) "$BG_BLU$C_BWHT" \
-            " ${TABS[$ACTIVE_TAB]} │ $((SCROLL+1))-${end}/${total}${filter_hint}"
+        [ -n "$FILTER" ] && filter_hint="  │ Filter: '$FILTER'"
+        local logfile_hint=""
+        [ -n "$LOG_FILE" ] && [ "$ACTIVE_TAB" -eq 2 ] && logfile_hint="  │ 📄 ${LOG_FILE##*/}"
+        _fill_line $((ROWS - 2)) "$BG_BLU$C_BWHT$C_BOLD" \
+            " ◈ ${TABS[$ACTIVE_TAB]}  │  $((SCROLL+1))-${end} of ${total} lines${filter_hint}${logfile_hint}"
     fi
-    local keys=" 1-7:Tab  ↑↓:Scroll  PgUp/PgDn  r:Refresh  /:Filter  q:Quit"
-    [ "$ACTIVE_TAB" -eq 2 ] && keys=" 1-7:Tab  ↑↓:Scroll  L:LogFile  r:Refresh  /:Filter  q:Quit"
+    local keys=" 1-7:Tab  ↑↓/jk:Scroll  PgUp/PgDn  r:Refresh  /:Filter  q:Quit"
+    [ "$ACTIVE_TAB" -eq 2 ] && keys=" 1-7:Tab  ↑↓/jk:Scroll  L:LogFile  r:Refresh  /:Filter  q:Quit"
     _fill_line $((ROWS - 1)) "$BG_BLK$C_CYN" "$keys"
 }
 
@@ -181,18 +195,30 @@ _colorize_line() {
     lower=$(echo "$line" | tr '[:upper:]' '[:lower:]')
 
     case "$lower" in
-        *"== "*|*"-- "*)
-            printf "%s%s%s" "$C_BCYN$C_BOLD" "$line" "$C_RESET" ;;
-        *error*|*fail*|*fatal*|*critical*|*"\[fail\]"*)
-            printf "%s%s%s" "$C_BRED" "$line" "$C_RESET" ;;
+        *"== "*|*"── "*)
+            printf "%s %s %s" "$C_BCYN$C_BOLD" "$line" "$C_RESET" ;;
+        *"-- "*)
+            printf "%s%s%s" "$C_MAG$C_BOLD" "$line" "$C_RESET" ;;
+        *"expired"*|*error*|*fail*|*fatal*|*critical*|*"\[fail\]"*|*panic*)
+            printf "%s ✗ %s%s" "$C_BRED" "$line" "$C_RESET" ;;
         *warn*)
-            printf "%s%s%s" "$C_BYEL" "$line" "$C_RESET" ;;
+            printf "%s ⚠ %s%s" "$C_BYEL" "$line" "$C_RESET" ;;
         *running*|*"\[run\]"*|*active*|*" ok "*)
             printf "%s%s%s" "$C_BGRN" "$line" "$C_RESET" ;;
+        *"subject:"*|*"issuer:"*|*"valid from:"*|*"expires:"*|*"serial:"*|*"sans:"*)
+            printf "%s%s%s" "$C_BCYN" "$line" "$C_RESET" ;;
         *"\[stop\]"*|*inactive*|*dead*)
             printf "%s%s%s" "$C_DIM$C_WHT" "$line" "$C_RESET" ;;
-        *"info"*|*debug*)
+        *"hostname:"*|*"os:"*|*"arch"*|*"cores:"*|*"load"*|*"uptime:"*|*"date:"*|*"users"*|*"total ram"*|*"python:"*)
+            printf "%s  ▸ %s%s" "$C_BWHT" "$line" "$C_RESET" ;;
+        *"ram:"*|*"swap:"*|*"disk"*)
+            printf "%s%s%s" "$C_BMAG" "$line" "$C_RESET" ;;
+        *"listen"*|*"established"*)
+            printf "%s%s%s" "$C_BGRN" "$line" "$C_RESET" ;;
+        *"info"*|*debug*|*"source:"*)
             printf "%s%s%s" "$C_BLU" "$line" "$C_RESET" ;;
+        *"press "*|*"usage"*)
+            printf "%s%s%s" "$C_BYEL$C_DIM" "$line" "$C_RESET" ;;
         *)
             printf "%s%s%s" "$C_WHT" "$line" "$C_RESET" ;;
     esac
@@ -249,12 +275,14 @@ _collect_system() {
     kernel=$(uname -r)
     arch=$(uname -m)
 
-    CONTENT+=("== SYSTEM INFORMATION ==")
+    CONTENT+=("== ◈ SYSTEM INFORMATION ==")
     CONTENT+=("")
     CONTENT+=("  Hostname:     $fqdn")
     CONTENT+=("  Short Name:   $hostname")
     CONTENT+=("  OS:           $os $kernel")
     CONTENT+=("  Architecture: $arch")
+    CONTENT+=("  Python:       $(python3 --version 2>/dev/null | cut -d' ' -f2 || echo 'N/A')")
+    CONTENT+=("  Shell:        $SHELL")
     CONTENT+=("  Date:         $(date '+%Y-%m-%d %H:%M:%S %Z')")
     CONTENT+=("")
 
@@ -263,7 +291,7 @@ _collect_system() {
     CONTENT+=("  Uptime:       $uptime_str")
     CONTENT+=("")
 
-    CONTENT+=("== CPU ==")
+    CONTENT+=("== ⚡ CPU ==")
     CONTENT+=("")
     local ncpu
     ncpu=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo "?")
@@ -274,7 +302,7 @@ _collect_system() {
     [ -n "$loadavg" ] && CONTENT+=("  Load Average: $loadavg")
     CONTENT+=("")
 
-    CONTENT+=("== MEMORY ==")
+    CONTENT+=("== 🧠 MEMORY ==")
     CONTENT+=("")
     if [ "$os" = "Linux" ]; then
         while IFS= read -r line; do
@@ -311,14 +339,14 @@ _collect_system() {
     fi
     CONTENT+=("")
 
-    CONTENT+=("== DISK ==")
+    CONTENT+=("== 💾 DISK ==")
     CONTENT+=("")
     while IFS= read -r line; do
         CONTENT+=("  $line")
     done < <(df -h / /home /tmp /var 2>/dev/null | sort -u)
     CONTENT+=("")
 
-    CONTENT+=("== USERS ==")
+    CONTENT+=("== 👤 USERS ==")
     CONTENT+=("")
     local nusers
     nusers=$(who 2>/dev/null | wc -l | tr -d ' ')
@@ -334,28 +362,31 @@ _collect_services() {
     os=$(uname -s)
 
     if [ "$os" = "Linux" ] && command -v systemctl >/dev/null 2>&1; then
-        CONTENT+=("== RUNNING SERVICES ==")
+        CONTENT+=("== ✅ RUNNING SERVICES ==")
         CONTENT+=("")
+        local run_count=0
         while IFS= read -r line; do
             local name="${line%%.service*}"
             name="${name##* }"
             CONTENT+=("  ${C_BGRN}●${C_RESET} $name")
+            run_count=$((run_count + 1))
         done < <(systemctl list-units --type=service --state=running --no-pager --no-legend 2>/dev/null | head -40)
+        CONTENT+=("  ${C_BGRN}── $run_count services running ──${C_RESET}")
 
         CONTENT+=("")
-        CONTENT+=("== FAILED SERVICES ==")
+        CONTENT+=("== ❌ FAILED SERVICES ==")
         CONTENT+=("")
         local has_failed=0
         while IFS= read -r line; do
             local name="${line%%.service*}"
             name="${name##* }"
-            CONTENT+=("  ${C_BRED}✗${C_RESET} $name")
+            CONTENT+=("  ${C_BRED}✗${C_RESET} ${C_BRED}$name${C_RESET}")
             has_failed=1
         done < <(systemctl list-units --type=service --state=failed --no-pager --no-legend 2>/dev/null)
-        [ $has_failed -eq 0 ] && CONTENT+=("  ${C_BGRN}No failed services${C_RESET}")
+        [ $has_failed -eq 0 ] && CONTENT+=("  ${C_BGRN}✓ No failed services${C_RESET}")
 
         CONTENT+=("")
-        CONTENT+=("== STOPPED SERVICES ==")
+        CONTENT+=("== ⏹ STOPPED SERVICES ==")
         CONTENT+=("")
         while IFS= read -r line; do
             local name="${line%%.service*}"
@@ -394,7 +425,7 @@ _collect_logs() {
         return
     fi
 
-    CONTENT+=("== SYSTEM LOGS  (Press L to select a log file) ==")
+    CONTENT+=("== 📋 SYSTEM LOGS  (Press L to select a log file) ==")
     CONTENT+=("")
 
     if [ "$os" = "Linux" ]; then
@@ -444,7 +475,7 @@ _collect_network() {
     local os
     os=$(uname -s)
 
-    CONTENT+=("== NETWORK INTERFACES ==")
+    CONTENT+=("== 🌐 NETWORK INTERFACES ==")
     CONTENT+=("")
     if [ "$os" = "Linux" ]; then
         while IFS= read -r line; do
@@ -457,7 +488,7 @@ _collect_network() {
     fi
 
     CONTENT+=("")
-    CONTENT+=("== LISTENING PORTS ==")
+    CONTENT+=("== 🔌 LISTENING PORTS ==")
     CONTENT+=("")
     if [ "$os" = "Linux" ]; then
         while IFS= read -r line; do
@@ -470,7 +501,7 @@ _collect_network() {
     fi
 
     CONTENT+=("")
-    CONTENT+=("== ROUTING TABLE ==")
+    CONTENT+=("== 🛣 ROUTING TABLE ==")
     CONTENT+=("")
     if [ "$os" = "Linux" ]; then
         while IFS= read -r line; do
@@ -483,14 +514,14 @@ _collect_network() {
     fi
 
     CONTENT+=("")
-    CONTENT+=("== DNS CONFIGURATION ==")
+    CONTENT+=("== 📡 DNS CONFIGURATION ==")
     CONTENT+=("")
     while IFS= read -r line; do
         CONTENT+=("  $line")
     done < <(grep -E '^(nameserver|search|domain)' /etc/resolv.conf 2>/dev/null)
 
     CONTENT+=("")
-    CONTENT+=("== ACTIVE CONNECTIONS ==")
+    CONTENT+=("== 🔗 ACTIVE CONNECTIONS ==")
     CONTENT+=("")
     if [ "$os" = "Linux" ]; then
         while IFS= read -r line; do
@@ -508,7 +539,7 @@ _collect_processes() {
     local os
     os=$(uname -s)
 
-    CONTENT+=("== TOP PROCESSES BY CPU ==")
+    CONTENT+=("== ⚡ TOP PROCESSES BY CPU ==")
     CONTENT+=("")
     if [ "$os" = "Linux" ]; then
         while IFS= read -r line; do
@@ -521,7 +552,7 @@ _collect_processes() {
     fi
 
     CONTENT+=("")
-    CONTENT+=("== TOP PROCESSES BY MEMORY ==")
+    CONTENT+=("== 🧠 TOP PROCESSES BY MEMORY ==")
     CONTENT+=("")
     if [ "$os" = "Linux" ]; then
         while IFS= read -r line; do
@@ -549,7 +580,7 @@ _collect_certs() {
         done
     fi
 
-    CONTENT+=("== SSL/TLS CERTIFICATES ==")
+    CONTENT+=("== 🔒 SSL/TLS CERTIFICATES ==")
     CONTENT+=("")
 
     local target host port_s
@@ -606,7 +637,7 @@ _collect_storage() {
     local os
     os=$(uname -s)
 
-    CONTENT+=("== FILESYSTEM USAGE ==")
+    CONTENT+=("== 💾 FILESYSTEM USAGE ==")
     CONTENT+=("")
     while IFS= read -r line; do
         # Colorize usage percentage
@@ -622,7 +653,7 @@ _collect_storage() {
     done < <(df -h 2>/dev/null)
 
     CONTENT+=("")
-    CONTENT+=("== MOUNT POINTS ==")
+    CONTENT+=("== 📁 MOUNT POINTS ==")
     CONTENT+=("")
     while IFS= read -r line; do
         CONTENT+=("  ${line:0:120}")
@@ -689,10 +720,12 @@ _filter_content() {
 # ── Tab Data Loading ─────────────────────────────────────────────────────────
 
 _show_loading() {
-    _goto 4 2
-    printf "%s%s Loading %s...%s" "$C_BYEL$C_BOLD" "⟳" "${TABS[$ACTIVE_TAB]}" "$C_RESET"
-    # Force refresh
-    tput cup 4 2 2>/dev/null
+    local center_row=$(( (ROWS - 3) / 2 + 3 ))
+    local msg="  ⟳  Loading ${TABS[$ACTIVE_TAB]}...  "
+    local center_col=$(( (COLS - ${#msg}) / 2 ))
+    [ $center_col -lt 0 ] && center_col=2
+    _goto $center_row $center_col
+    printf "%s%s%s" "$BG_BLU$C_BWHT$C_BOLD" "$msg" "$C_RESET"
 }
 
 _load_tab() {
