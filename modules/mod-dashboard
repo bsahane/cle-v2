@@ -1,0 +1,31 @@
+##
+## ** mod-dashboard: TUI-based host monitoring dashboard **
+#* version: 2026-04-06
+
+command -v python3 >/dev/null 2>&1 || return
+
+## `ldash [host:port ...]` - launch TUI dashboard (extra args for cert checks)
+ldash () {
+	local DASH="$CLE_RD/tools/cle-dashboard"
+	[ -f "$DASH" ] || DASH="$CLE_LIB/../tools/cle-dashboard"
+	[ -f "$DASH" ] || { echo "Dashboard not found"; return 1; }
+	python3 "$DASH" "$@"
+}
+
+## `ldash-remote <host> [host:port ...]` - launch dashboard on remote host via SSH
+ldash-remote () {
+	local HOST=${1:?Usage: ldash-remote <ssh_host> [host:port ...]}
+	shift
+	local DASH="$CLE_RD/tools/cle-dashboard"
+	[ -f "$DASH" ] || DASH="$CLE_LIB/../tools/cle-dashboard"
+	[ -f "$DASH" ] || { echo "Dashboard not found"; return 1; }
+	echo "Deploying dashboard to $HOST..."
+	local RPATH="/tmp/.cle-dashboard-$$"
+	scp -q "$DASH" "$HOST:$RPATH" 2>/dev/null || { echo "SCP failed"; return 1; }
+	ssh -t "$HOST" "python3 $RPATH $*; rm -f $RPATH"
+}
+
+## `lmon` - alias for ldash
+lmon () {
+	ldash "$@"
+}

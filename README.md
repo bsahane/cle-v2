@@ -20,7 +20,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Shell-bash%20%7C%20zsh-green" alt="Shell">
   <img src="https://img.shields.io/badge/OS-Linux%20%7C%20macOS-blue" alt="OS">
-  <img src="https://img.shields.io/badge/Modules-45-orange" alt="Modules">
+  <img src="https://img.shields.io/badge/Modules-46-orange" alt="Modules">
   <img src="https://img.shields.io/badge/License-GPL%20v2-red" alt="License">
   <img src="https://img.shields.io/badge/Version-2026--04--06-brightgreen" alt="Version">
 </p>
@@ -29,7 +29,7 @@
 
 ## What is CLE?
 
-CLE transforms your terminal into a powerful, consistent environment that follows you everywhere — including remote servers via SSH. It provides a colorful prompt, persistent aliases, rich command history, 45 extension modules, and seamless remote session propagation.
+CLE transforms your terminal into a powerful, consistent environment that follows you everywhere — including remote servers via SSH. It provides a colorful prompt, persistent aliases, rich command history, 46 extension modules, and seamless remote session propagation.
 
 ```
 Local Machine ──lssh──> Remote Server ──lssh──> Another Server
@@ -42,7 +42,7 @@ Local Machine ──lssh──> Remote Server ──lssh──> Another Server
 | Problem | CLE Solution |
 |---------|-------------|
 | Different shell configs on every server | `lssh` propagates your entire environment |
-| Forgetting useful commands | 45 modules with 225+ functions always available |
+| Forgetting useful commands | 46 modules with 230+ functions always available |
 | Inconsistent prompt across machines | Configurable prompt themes that travel with you |
 | Lost command history on remote | Rich history with timestamps, durations, exit codes |
 | No vim config on remote servers | Vimrc automatically packed and activated via VIMINIT |
@@ -53,7 +53,7 @@ Local Machine ──lssh──> Remote Server ──lssh──> Another Server
 
 ### Core
 
-- **Modular Architecture** — 9 core libraries + 45 optional modules
+- **Modular Architecture** — 9 core libraries + 46 optional modules
 - **Cross-Shell** — Full support for both bash and zsh
 - **Cross-Platform** — Linux and macOS with OS-specific optimizations
 - **Prompt Themes** — 6 built-in themes with git, k8s, venv, and SSH agent indicators
@@ -122,7 +122,7 @@ cle profile   # Startup timing
 
 ## Modules
 
-CLE ships with **45 extension modules** organized by category:
+CLE ships with **46 extension modules** organized by category:
 
 ### Development
 
@@ -200,6 +200,12 @@ CLE ships with **45 extension modules** organized by category:
 |--------|----------|-------------|
 | **mod-serve** | `serve` `serve-upload` `qr` | Quick HTTP server |
 | **mod-transfer** | `transfer` `share` `paste-text` | File sharing (transfer.sh) |
+
+### Monitoring & Dashboard
+
+| Module | Commands | Description |
+|--------|----------|-------------|
+| **mod-dashboard** | `ldash` `ldash-remote` `lmon` | TUI host monitoring dashboard (7 tabs) |
 
 ### Visual & Terminal
 
@@ -380,6 +386,35 @@ hgrep "pattern"       # Quick history grep
 
 ---
 
+## Dashboard
+
+CLE includes a full TUI (Terminal User Interface) dashboard for host monitoring. Built with Python curses (zero dependencies), it works locally and on remote hosts via `lssh`.
+
+```bash
+ldash                     # Launch dashboard locally
+ldash-remote host         # Deploy & launch on remote host via SSH
+lmon                      # Alias for ldash
+ldash localhost:443       # Include specific cert targets
+```
+
+### Dashboard Tabs
+
+| Tab | Key | Content |
+|-----|-----|---------|
+| System | `1` | Hostname, OS, kernel, uptime, load, CPU, memory, swap, disk |
+| Services | `2` | Running/failed/stopped systemd services (or launchctl on macOS) |
+| Logs | `3` | Live scrollable log viewer (journalctl/syslog) |
+| Network | `4` | Interfaces, IPs, routes, listening ports, DNS, connections |
+| Processes | `5` | Top processes by CPU and memory |
+| Certs | `6` | SSL certificates on detected or specified ports |
+| Storage | `7` | Filesystem usage, mount points, largest directories, block devices |
+
+### Keys
+
+`1-7` switch tabs, `Tab`/`Shift-Tab` next/prev, `j/k` or `Up/Down` scroll, `PgUp/PgDn` page, `/` filter, `r` refresh, `g`/`G` top/bottom, `q` quit
+
+---
+
 ## Health Check
 
 ```bash
@@ -439,7 +474,7 @@ cle-v2/
 │   ├── navigation.sh     # Directory navigation
 │   ├── sessions.sh       # Remote session propagation
 │   └── cle.sh            # CLE command center
-├── modules/              # 45 extension modules
+├── modules/              # 46 extension modules
 ├── themes/               # Prompt themes + palettes
 ├── commands/             # CLE subcommands
 ├── user/                 # User data (vimrc, aliases, tweaks)
@@ -454,7 +489,7 @@ cle-v2/
 - **Maintainer**: Bhushan Sahane (bsahane@redhat.com)
 - **License**: GNU GPL v2
 
-CLE was originally created as a single-file shell enhancer. v2 reimagines it as a fully modular framework with 45 extension modules, cross-platform support, and modern CLI integration.
+CLE was originally created as a single-file shell enhancer. v2 reimagines it as a fully modular framework with 46 extension modules, cross-platform support, and modern CLI integration.
 
 ---
 

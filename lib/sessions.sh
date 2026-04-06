@@ -20,9 +20,9 @@ _clepak () {
 
 		command cp -f "$CLE_RC" "$RC"
 
-		# Pack directories (lib, modules, themes, commands, user)
+		# Pack directories (lib, modules, themes, commands, user, tools)
 		local _SD
-		for _SD in lib modules themes commands user; do
+		for _SD in lib modules themes commands user tools; do
 			local _SRC="$CLE_RD/$_SD"
 			local _DST="$RD/$_SD"
 			[ -d "$_SRC" ] || continue
@@ -50,7 +50,7 @@ _clepak () {
 
 	if [ "$1" ]; then
 		local _DIRS=""
-		for _SD in lib modules themes commands user; do
+		for _SD in lib modules themes commands user tools; do
 			[ -d "$RD/$_SD" ] && _DIRS="$_DIRS $RD/$_SD"
 		done
 		C64=$(eval tar chzf - "$RC" "$TW" "$EN" $_DIRS 2>/dev/null | base64 | tr -d '\n\r ')

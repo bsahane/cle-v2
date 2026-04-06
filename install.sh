@@ -35,7 +35,7 @@ mkdir -p "$DEST_DIR"
 cp "$SRC_DIR/rc" "$DEST_DIR/"
 chmod 755 "$DEST_DIR/rc"
 
-for DIR in lib modules themes commands user; do
+for DIR in lib modules themes commands user tools; do
 	if [ -d "$SRC_DIR/$DIR" ]; then
 		cp -r "$SRC_DIR/$DIR" "$DEST_DIR/"
 	fi

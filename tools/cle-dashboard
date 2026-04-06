@@ -1,0 +1,551 @@
+#!/usr/bin/env python3
+"""
+CLE Dashboard - TUI-based host monitoring with tabbed interface.
+Zero dependencies beyond Python 3.6+ stdlib.
+Designed to work locally and on remote hosts via lssh.
+
+Usage: cle-dashboard [host:port ...]    (extra host:port pairs for cert checks)
+Keys:  1-7 tabs | Tab next | Up/Down scroll | PgUp/PgDn page | r refresh | / filter | q quit
+"""
+
+import curses
+import os
+import platform
+import re
+import signal
+import socket
+import ssl
+import subprocess
+import sys
+import time
+from datetime import datetime
+
+TABS = ["System", "Services", "Logs", "Network", "Processes", "Certs", "Storage"]
+REFRESH_INTERVAL = 5
+
+# ── Helpers ──────────────────────────────────────────────────────────────────
+
+def run(cmd, timeout=5):
+    try:
+        r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout)
+        return r.stdout.strip()
+    except Exception:
+        return ""
+
+def run_lines(cmd, timeout=5):
+    return run(cmd, timeout).splitlines()
+
+def safe_int(s, default=0):
+    try:
+        return int(s)
+    except (ValueError, TypeError):
+        return default
+
+def human_bytes(n):
+    for u in ("B", "K", "M", "G", "T"):
+        if abs(n) < 1024:
+            return f"{n:.1f}{u}"
+        n /= 1024
+    return f"{n:.1f}P"
+
+def bar(pct, width=20):
+    filled = int(pct / 100 * width)
+    return "[" + "#" * filled + "-" * (width - filled) + "]"
+
+# ── Data Collectors ──────────────────────────────────────────────────────────
+
+def collect_system():
+    lines = []
+    hostname = socket.getfqdn()
+    uname = platform.uname()
+    lines.append(("Hostname", hostname))
+    lines.append(("OS", f"{uname.system} {uname.release}"))
+    lines.append(("Kernel", uname.version[:80]))
+    lines.append(("Arch", uname.machine))
+    lines.append(("Python", platform.python_version()))
+
+    uptime = run("uptime")
+    if uptime:
+        lines.append(("Uptime", uptime.strip()))
+
+    load = run("cat /proc/loadavg 2>/dev/null || sysctl -n vm.loadavg 2>/dev/null")
+    if load:
+        lines.append(("Load Avg", load.split("{")[-1].split("}")[0].strip() if "{" in load else load))
+
+    # CPU
+    ncpu = run("nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null")
+    if ncpu:
+        lines.append(("CPU Cores", ncpu))
+
+    # Memory
+    if uname.system == "Linux":
+        meminfo = run("free -m 2>/dev/null")
+        for ml in meminfo.splitlines():
+            if ml.startswith("Mem:"):
+                parts = ml.split()
+                if len(parts) >= 3:
+                    total, used = safe_int(parts[1]), safe_int(parts[2])
+                    pct = (used * 100 // total) if total else 0
+                    lines.append(("Memory", f"{used}M / {total}M ({pct}%) {bar(pct)}"))
+            elif ml.startswith("Swap:"):
+                parts = ml.split()
+                if len(parts) >= 3:
+                    total, used = safe_int(parts[1]), safe_int(parts[2])
+                    pct = (used * 100 // total) if total else 0
+                    lines.append(("Swap", f"{used}M / {total}M ({pct}%) {bar(pct)}"))
+    else:
+        mem = run("sysctl -n hw.memsize 2>/dev/null")
+        if mem:
+            total_gb = safe_int(mem) / (1024**3)
+            lines.append(("Memory", f"{total_gb:.1f} GB total"))
+
+    # Disk root
+    df = run("df -h / 2>/dev/null")
+    for dl in df.splitlines()[1:]:
+        parts = dl.split()
+        if len(parts) >= 5:
+            lines.append(("Disk /", f"{parts[2]} / {parts[1]} ({parts[4]}) {bar(safe_int(parts[4].rstrip('%')))}"))
+
+    # Users
+    who = run("who 2>/dev/null | wc -l")
+    lines.append(("Users", f"{who.strip()} logged in"))
+
+    # Date
+    lines.append(("Date", datetime.now().strftime("%Y-%m-%d %H:%M:%S %Z")))
+
+    return lines
+
+def collect_services():
+    lines = []
+    uname = platform.system()
+    if uname == "Linux":
+        # systemd
+        running = run_lines("systemctl list-units --type=service --state=running --no-pager --no-legend 2>/dev/null")
+        if running:
+            lines.append(("== RUNNING SERVICES ==", ""))
+            for s in running[:50]:
+                parts = s.split()
+                if parts:
+                    name = parts[0].replace(".service", "")
+                    desc = " ".join(parts[4:]) if len(parts) > 4 else ""
+                    lines.append((f"  [RUN] {name}", desc[:60]))
+
+        lines.append(("", ""))
+        failed = run_lines("systemctl list-units --type=service --state=failed --no-pager --no-legend 2>/dev/null")
+        if failed:
+            lines.append(("== FAILED SERVICES ==", ""))
+            for s in failed[:20]:
+                parts = s.split()
+                if parts:
+                    name = parts[0].replace(".service", "")
+                    lines.append((f"  [FAIL] {name}", ""))
+
+        lines.append(("", ""))
+        inactive = run_lines("systemctl list-units --type=service --state=inactive --no-pager --no-legend 2>/dev/null | head -30")
+        if inactive:
+            lines.append(("== STOPPED SERVICES (sample) ==", ""))
+            for s in inactive[:30]:
+                parts = s.split()
+                if parts:
+                    name = parts[0].replace(".service", "")
+                    lines.append((f"  [STOP] {name}", ""))
+    elif uname == "Darwin":
+        # launchctl
+        svcs = run_lines("launchctl list 2>/dev/null | head -50")
+        if svcs:
+            lines.append(("== LAUNCHCTL SERVICES ==", ""))
+            for s in svcs:
+                parts = s.split("\t") if "\t" in s else s.split()
+                if len(parts) >= 3:
+                    pid, status, name = parts[0], parts[1], parts[2]
+                    tag = "[RUN]" if pid != "-" else "[STOP]"
+                    lines.append((f"  {tag} {name}", f"PID:{pid} Status:{status}"))
+    else:
+        lines.append(("Service listing not supported on this OS", ""))
+
+    return lines
+
+def collect_logs():
+    lines = []
+    uname = platform.system()
+    if uname == "Linux":
+        log_lines = run_lines("journalctl --no-pager -n 80 --output=short 2>/dev/null || tail -80 /var/log/syslog 2>/dev/null || tail -80 /var/log/messages 2>/dev/null")
+    elif uname == "Darwin":
+        log_lines = run_lines("log show --last 5m --style compact 2>/dev/null | tail -80")
+    else:
+        log_lines = ["No log source available"]
+    for l in log_lines:
+        lines.append(l[:200])
+    return lines
+
+def collect_network():
+    lines = []
+    lines.append("== INTERFACES ==")
+    if platform.system() == "Linux":
+        ifaces = run_lines("ip -br addr 2>/dev/null || ifconfig -a 2>/dev/null | head -40")
+    else:
+        ifaces = run_lines("ifconfig -a 2>/dev/null | grep -E '(^[a-z]|inet )' | head -30")
+    for l in ifaces:
+        lines.append("  " + l)
+
+    lines.append("")
+    lines.append("== LISTENING PORTS ==")
+    if platform.system() == "Linux":
+        ports = run_lines("ss -tlnp 2>/dev/null | head -30")
+    else:
+        ports = run_lines("lsof -i -P -n 2>/dev/null | grep LISTEN | head -30")
+    for l in ports:
+        lines.append("  " + l)
+
+    lines.append("")
+    lines.append("== ROUTES ==")
+    if platform.system() == "Linux":
+        routes = run_lines("ip route 2>/dev/null | head -15")
+    else:
+        routes = run_lines("netstat -rn 2>/dev/null | head -15")
+    for l in routes:
+        lines.append("  " + l)
+
+    lines.append("")
+    lines.append("== DNS ==")
+    dns = run_lines("cat /etc/resolv.conf 2>/dev/null | grep -E '^(nameserver|search|domain)'")
+    for l in dns:
+        lines.append("  " + l)
+
+    lines.append("")
+    lines.append("== CONNECTIONS ==")
+    if platform.system() == "Linux":
+        conns = run_lines("ss -tnp 2>/dev/null | head -20")
+    else:
+        conns = run_lines("netstat -an 2>/dev/null | grep ESTABLISHED | head -20")
+    for l in conns:
+        lines.append("  " + l)
+
+    return lines
+
+def collect_processes():
+    lines = []
+    lines.append("== TOP PROCESSES BY CPU ==")
+    if platform.system() == "Linux":
+        procs = run_lines("ps aux --sort=-%cpu 2>/dev/null | head -21")
+    else:
+        procs = run_lines("ps aux -r 2>/dev/null | head -21")
+    for l in procs:
+        lines.append(l[:200])
+
+    lines.append("")
+    lines.append("== TOP PROCESSES BY MEMORY ==")
+    if platform.system() == "Linux":
+        memprocs = run_lines("ps aux --sort=-%mem 2>/dev/null | head -16")
+    else:
+        memprocs = run_lines("ps aux -m 2>/dev/null | head -16")
+    for l in memprocs[1:]:
+        lines.append(l[:200])
+
+    return lines
+
+def collect_certs(targets):
+    lines = []
+    if not targets:
+        targets = []
+        lports = run_lines("ss -tlnp 2>/dev/null | grep -oP ':\\K[0-9]+' | sort -un 2>/dev/null")
+        if not lports:
+            lports = run_lines("lsof -i -P -n 2>/dev/null | grep LISTEN | awk '{print $9}' | grep -oE '[0-9]+$' | sort -un")
+        common_ssl = {"443", "8443", "636", "993", "995", "465", "5986"}
+        for p in lports:
+            if p.strip() in common_ssl:
+                targets.append(f"localhost:{p.strip()}")
+        if not targets:
+            targets = ["localhost:443"]
+
+    for target in targets:
+        lines.append(f"== {target} ==")
+        if ":" not in target:
+            target = f"{target}:443"
+        host, port_s = target.rsplit(":", 1)
+        port = safe_int(port_s, 443)
+        try:
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            with socket.create_connection((host, port), timeout=5) as sock:
+                with ctx.wrap_socket(sock, server_hostname=host) as ssock:
+                    cert = ssock.getpeercert(binary_form=False)
+                    if cert:
+                        subj = dict(x[0] for x in cert.get("subject", ()))
+                        issuer = dict(x[0] for x in cert.get("issuer", ()))
+                        lines.append(f"  Subject:  {subj.get('commonName', 'N/A')}")
+                        lines.append(f"  Issuer:   {issuer.get('commonName', 'N/A')}")
+                        lines.append(f"  Not Before: {cert.get('notBefore', 'N/A')}")
+                        lines.append(f"  Not After:  {cert.get('notAfter', 'N/A')}")
+                        san = cert.get("subjectAltName", ())
+                        if san:
+                            names = [v for t, v in san if t == "DNS"]
+                            lines.append(f"  SANs: {', '.join(names[:5])}")
+                        lines.append(f"  Serial: {cert.get('serialNumber', 'N/A')}")
+                        lines.append(f"  Version: {cert.get('version', 'N/A')}")
+                    else:
+                        der = ssock.getpeercert(binary_form=True)
+                        lines.append(f"  Certificate: {len(der)} bytes (binary)" if der else "  No certificate")
+        except ssl.SSLError as e:
+            lines.append(f"  SSL Error: {e}")
+        except (ConnectionRefusedError, socket.timeout):
+            lines.append(f"  Connection refused or timed out")
+        except Exception as e:
+            lines.append(f"  Error: {e}")
+        lines.append("")
+
+    return lines
+
+def collect_storage():
+    lines = []
+    lines.append("== FILESYSTEM USAGE ==")
+    df_lines = run_lines("df -hT 2>/dev/null || df -h 2>/dev/null")
+    for l in df_lines:
+        lines.append(l)
+
+    lines.append("")
+    lines.append("== MOUNT POINTS ==")
+    mounts = run_lines("mount 2>/dev/null | head -20")
+    for l in mounts:
+        lines.append("  " + l[:120])
+
+    lines.append("")
+    lines.append("== LARGEST DIRECTORIES (/) ==")
+    du_lines = run_lines("du -sh /* 2>/dev/null | sort -rh | head -15")
+    for l in du_lines:
+        lines.append("  " + l)
+
+    if platform.system() == "Linux":
+        lines.append("")
+        lines.append("== BLOCK DEVICES ==")
+        blk = run_lines("lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT 2>/dev/null | head -20")
+        for l in blk:
+            lines.append("  " + l)
+
+    return lines
+
+# ── TUI Application ─────────────────────────────────────────────────────────
+
+class Dashboard:
+    def __init__(self, stdscr, cert_targets):
+        self.stdscr = stdscr
+        self.cert_targets = cert_targets
+        self.active_tab = 0
+        self.scroll_offset = 0
+        self.filter_text = ""
+        self.filtering = False
+        self.cache = {}
+        self.last_refresh = 0
+        self.running = True
+
+        curses.start_color()
+        curses.use_default_colors()
+        curses.init_pair(1, curses.COLOR_WHITE, curses.COLOR_BLUE)    # active tab
+        curses.init_pair(2, curses.COLOR_BLACK, curses.COLOR_WHITE)   # inactive tab
+        curses.init_pair(3, curses.COLOR_GREEN, -1)                   # ok/running
+        curses.init_pair(4, curses.COLOR_RED, -1)                     # error/failed
+        curses.init_pair(5, curses.COLOR_YELLOW, -1)                  # warning
+        curses.init_pair(6, curses.COLOR_CYAN, -1)                    # info/header
+        curses.init_pair(7, curses.COLOR_WHITE, curses.COLOR_RED)     # status bar
+        curses.init_pair(8, curses.COLOR_BLACK, curses.COLOR_GREEN)   # filter bar
+        curses.curs_set(0)
+        self.stdscr.timeout(200)
+        signal.signal(signal.SIGWINCH, lambda s, f: None)
+
+    def refresh_data(self, force=False):
+        now = time.time()
+        if not force and (now - self.last_refresh) < REFRESH_INTERVAL:
+            return
+        self.last_refresh = now
+        tab = TABS[self.active_tab]
+        collectors = {
+            "System": collect_system,
+            "Services": collect_services,
+            "Logs": collect_logs,
+            "Network": collect_network,
+            "Processes": collect_processes,
+            "Certs": lambda: collect_certs(self.cert_targets),
+            "Storage": collect_storage,
+        }
+        if tab in collectors:
+            self.cache[tab] = collectors[tab]()
+
+    def get_content(self):
+        tab = TABS[self.active_tab]
+        data = self.cache.get(tab, [])
+        if self.filter_text:
+            ft = self.filter_text.lower()
+            if tab == "System":
+                return [(k, v) for k, v in data if ft in str(k).lower() or ft in str(v).lower()]
+            else:
+                return [l for l in data if ft in str(l).lower()]
+        return data
+
+    def draw_tabs(self):
+        h, w = self.stdscr.getmaxyx()
+        x = 0
+        for i, tab in enumerate(TABS):
+            label = f" {i+1}:{tab} "
+            if x + len(label) >= w:
+                break
+            if i == self.active_tab:
+                self.stdscr.addnstr(0, x, label, w - x, curses.color_pair(1) | curses.A_BOLD)
+            else:
+                self.stdscr.addnstr(0, x, label, w - x, curses.color_pair(2))
+            x += len(label)
+        if x < w:
+            self.stdscr.addnstr(0, x, " " * (w - x - 1), w - x - 1, curses.color_pair(2))
+
+    def draw_status(self):
+        h, w = self.stdscr.getmaxyx()
+        content = self.get_content()
+        total = len(content)
+        host = socket.gethostname()
+        ts = datetime.now().strftime("%H:%M:%S")
+        status = f" {host} | {ts} | {TABS[self.active_tab]} | {self.scroll_offset+1}-{min(self.scroll_offset+h-3, total)}/{total} | r:refresh q:quit /:filter Tab:next "
+        if self.filtering:
+            status = f" FILTER: {self.filter_text}_ (Enter to apply, Esc to cancel) "
+            self.stdscr.addnstr(h - 1, 0, status[:w-1], w - 1, curses.color_pair(8) | curses.A_BOLD)
+        else:
+            self.stdscr.addnstr(h - 1, 0, status[:w-1], w - 1, curses.color_pair(7))
+
+    def colorize(self, text):
+        tl = text.lower() if isinstance(text, str) else ""
+        if any(k in tl for k in ("error", "fail", "fatal", "critical", "crash", "[fail]")):
+            return curses.color_pair(4)
+        if any(k in tl for k in ("warn", "warning")):
+            return curses.color_pair(5)
+        if any(k in tl for k in ("running", "[run]", "ok", "active")):
+            return curses.color_pair(3)
+        if tl.startswith("==") or tl.startswith("--"):
+            return curses.color_pair(6) | curses.A_BOLD
+        return 0
+
+    def draw_content(self):
+        h, w = self.stdscr.getmaxyx()
+        content = self.get_content()
+        visible = h - 3
+        tab = TABS[self.active_tab]
+
+        for y in range(visible):
+            idx = self.scroll_offset + y
+            row = y + 1
+            if row >= h - 1:
+                break
+
+            if idx >= len(content):
+                self.stdscr.addnstr(row, 0, " " * (w - 1), w - 1)
+                continue
+
+            item = content[idx]
+            if tab == "System" and isinstance(item, tuple):
+                key, val = item
+                line = f"  {key:15s}  {val}" if key else ""
+                attr = self.colorize(str(val))
+                if key and key.startswith("=="):
+                    attr = curses.color_pair(6) | curses.A_BOLD
+                try:
+                    self.stdscr.addnstr(row, 0, line[:w-1].ljust(w-1), w - 1, attr)
+                except curses.error:
+                    pass
+            elif tab == "Services" and isinstance(item, tuple):
+                key, val = item
+                line = f"{key:40s} {val}" if val else key
+                attr = self.colorize(key)
+                try:
+                    self.stdscr.addnstr(row, 0, line[:w-1].ljust(w-1), w - 1, attr)
+                except curses.error:
+                    pass
+            else:
+                line = str(item) if not isinstance(item, tuple) else f"{item[0]}  {item[1]}"
+                attr = self.colorize(line)
+                try:
+                    self.stdscr.addnstr(row, 0, line[:w-1].ljust(w-1), w - 1, attr)
+                except curses.error:
+                    pass
+
+    def handle_input(self, key):
+        h, _ = self.stdscr.getmaxyx()
+        visible = h - 3
+        content = self.get_content()
+
+        if self.filtering:
+            if key == 27:  # Esc
+                self.filtering = False
+                self.filter_text = ""
+            elif key in (10, 13):  # Enter
+                self.filtering = False
+                self.scroll_offset = 0
+            elif key in (curses.KEY_BACKSPACE, 127, 8):
+                self.filter_text = self.filter_text[:-1]
+            elif 32 <= key <= 126:
+                self.filter_text += chr(key)
+            return
+
+        if key == ord("q"):
+            self.running = False
+        elif key == ord("/"):
+            self.filtering = True
+            self.filter_text = ""
+        elif key == ord("r"):
+            self.cache.pop(TABS[self.active_tab], None)
+            self.last_refresh = 0
+            self.refresh_data(force=True)
+        elif key == 9 or key == ord("l"):  # Tab or l
+            self.active_tab = (self.active_tab + 1) % len(TABS)
+            self.scroll_offset = 0
+            self.filter_text = ""
+            self.last_refresh = 0
+        elif key == curses.KEY_BTAB or key == ord("h"):  # Shift-Tab or h
+            self.active_tab = (self.active_tab - 1) % len(TABS)
+            self.scroll_offset = 0
+            self.filter_text = ""
+            self.last_refresh = 0
+        elif key in range(ord("1"), ord("1") + len(TABS)):
+            self.active_tab = key - ord("1")
+            self.scroll_offset = 0
+            self.filter_text = ""
+            self.last_refresh = 0
+        elif key == curses.KEY_DOWN or key == ord("j"):
+            if self.scroll_offset < max(0, len(content) - visible):
+                self.scroll_offset += 1
+        elif key == curses.KEY_UP or key == ord("k"):
+            if self.scroll_offset > 0:
+                self.scroll_offset -= 1
+        elif key == curses.KEY_NPAGE:
+            self.scroll_offset = min(self.scroll_offset + visible, max(0, len(content) - visible))
+        elif key == curses.KEY_PPAGE:
+            self.scroll_offset = max(0, self.scroll_offset - visible)
+        elif key == curses.KEY_HOME or key == ord("g"):
+            self.scroll_offset = 0
+        elif key == curses.KEY_END or key == ord("G"):
+            self.scroll_offset = max(0, len(content) - visible)
+
+    def run(self):
+        while self.running:
+            try:
+                self.refresh_data()
+                self.stdscr.erase()
+                self.draw_tabs()
+                self.draw_content()
+                self.draw_status()
+                self.stdscr.refresh()
+                key = self.stdscr.getch()
+                if key != -1:
+                    self.handle_input(key)
+            except curses.error:
+                pass
+            except KeyboardInterrupt:
+                break
+
+def main(stdscr, cert_targets):
+    dashboard = Dashboard(stdscr, cert_targets)
+    dashboard.run()
+
+if __name__ == "__main__":
+    cert_targets = sys.argv[1:]
+    try:
+        curses.wrapper(lambda s: main(s, cert_targets))
+    except KeyboardInterrupt:
+        pass

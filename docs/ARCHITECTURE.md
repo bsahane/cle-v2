@@ -64,7 +64,8 @@ cle-v2/
 │   ├── mod-env            # Environment management (dotenv, envs, pathls, pathadd, pathclean)
 │   ├── mod-port           # Port management (portscan, portcheck, waitport, killport, listening)
 │   ├── mod-ansible        # Ansible shortcuts (aplay, acheck, aping, afacts, arun, ainv, avault-*)
-│   └── mod-terraform      # Terraform/OpenTofu IaC (tfinit, tfplan, tfapply, tfstate, tflint)
+│   ├── mod-terraform      # Terraform/OpenTofu IaC (tfinit, tfplan, tfapply, tfstate, tflint)
+│   └── mod-dashboard      # TUI host monitoring dashboard (ldash, ldash-remote, lmon)
 ├── themes/                # Visual customization
 │   ├── cle-prompt         # Prompt theme presets
 │   └── cle-palette        # Terminal color palettes
@@ -257,7 +258,7 @@ Scaffold a new module with: `cle mod new <name>`
 
 Modules are auto-sourced on shell startup and included in remote session packs.
 
-## Module Reference (45 modules)
+## Module Reference (46 modules)
 
 | Module | Functions | Description |
 |--------|-----------|-------------|
@@ -305,4 +306,5 @@ Modules are auto-sourced on shell startup and included in remote session packs.
 | mod-port | portscan, portcheck, waitport, killport, listening, portfwd, openport | Port management |
 | mod-ansible | aplay, acheck, adiff, aping, afacts, arun, acopy, ainv, ainv-graph, alint, avault-*, aroles, acollections | Ansible workflows |
 | mod-terraform | tfinit, tfplan, tfapply, tfdestroy, tfstate, tfshow, tfoutputs, tfworkspaces, tfws, tfgraph, tflint, tffmtall, tfimport, tfcost, tfsec | Terraform/OpenTofu IaC |
+| mod-dashboard | ldash, ldash-remote, lmon | TUI host monitoring (7 tabs: system/services/logs/network/processes/certs/storage) |
 | mod-zoxide | j, ji | Smart directory jumping |
