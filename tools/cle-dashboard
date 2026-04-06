@@ -699,6 +699,12 @@ _collect_certs() {
     fi
 
     if [ ${#targets[@]} -eq 0 ]; then
+        # Priority: SMTP (25 with STARTTLS), then SMTPS (465), then common SSL ports
+        if _check_port_open localhost 25; then
+            targets+=("localhost:25")
+        elif _check_port_open localhost 465; then
+            targets+=("localhost:465")
+        fi
         local port
         for port in 443 8443 636 993 995; do
             if _check_port_open localhost "$port"; then
