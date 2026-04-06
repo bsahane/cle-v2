@@ -64,6 +64,11 @@ _tui_init() {
 
     TABS=("System" "Services" "Logs" "Network" "Processes" "Certs" "Storage")
 
+    # Tab data cache (indexed by tab number)
+    declare -A TAB_CACHE
+    declare -A TAB_CACHE_TIME
+    LOG_FILE=""  # custom log file for streaming
+
     # Save terminal state
     tput smcup 2>/dev/null
     tput civis 2>/dev/null
@@ -163,8 +168,9 @@ _draw_status() {
         _fill_line $((ROWS - 2)) "$BG_BLU$C_BWHT" \
             " ${TABS[$ACTIVE_TAB]} │ $((SCROLL+1))-${end}/${total}${filter_hint}"
     fi
-    _fill_line $((ROWS - 1)) "$BG_BLK$C_CYN" \
-        " 1-7:Tab  ↑↓:Scroll  PgUp/PgDn  r:Refresh  /:Filter  q:Quit"
+    local keys=" 1-7:Tab  ↑↓:Scroll  PgUp/PgDn  r:Refresh  /:Filter  q:Quit"
+    [ "$ACTIVE_TAB" -eq 2 ] && keys=" 1-7:Tab  ↑↓:Scroll  L:LogFile  r:Refresh  /:Filter  q:Quit"
+    _fill_line $((ROWS - 1)) "$BG_BLK$C_CYN" "$keys"
 }
 
 # ── Content Rendering ────────────────────────────────────────────────────────
@@ -377,7 +383,18 @@ _collect_logs() {
     local os
     os=$(uname -s)
 
-    CONTENT+=("== RECENT SYSTEM LOGS ==")
+    # Custom log file mode
+    if [ -n "$LOG_FILE" ] && [ -f "$LOG_FILE" ]; then
+        CONTENT+=("== LOG FILE: $LOG_FILE ==")
+        CONTENT+=("  (Press L to change file, R to refresh)")
+        CONTENT+=("")
+        while IFS= read -r line; do
+            CONTENT+=("$line")
+        done < <(tail -200 "$LOG_FILE" 2>/dev/null)
+        return
+    fi
+
+    CONTENT+=("== SYSTEM LOGS  (Press L to select a log file) ==")
     CONTENT+=("")
 
     if [ "$os" = "Linux" ]; then
@@ -388,10 +405,38 @@ _collect_logs() {
                  tail -100 /var/log/messages 2>/dev/null || \
                  echo "No log source available")
     elif [ "$os" = "Darwin" ]; then
-        while IFS= read -r line; do
-            CONTENT+=("$line")
-        done < <(log show --last 5m --style compact 2>/dev/null | tail -100)
+        # Use /var/log/system.log or install.log instead of slow `log show`
+        local logfile=""
+        for lf in /var/log/system.log /var/log/install.log /var/log/wifi.log; do
+            [ -r "$lf" ] && { logfile="$lf"; break; }
+        done
+        if [ -n "$logfile" ]; then
+            CONTENT+=("  (Source: $logfile)")
+            CONTENT+=("")
+            while IFS= read -r line; do
+                CONTENT+=("$line")
+            done < <(tail -100 "$logfile" 2>/dev/null)
+        else
+            while IFS= read -r line; do
+                CONTENT+=("$line")
+            done < <(log show --last 1m --style compact 2>/dev/null | tail -50)
+        fi
     fi
+
+    CONTENT+=("")
+    CONTENT+=("== AVAILABLE LOG FILES ==")
+    CONTENT+=("")
+    local lf
+    for lf in /var/log/syslog /var/log/messages /var/log/auth.log /var/log/kern.log \
+               /var/log/dmesg /var/log/secure /var/log/cron /var/log/boot.log \
+               /var/log/system.log /var/log/install.log /var/log/wifi.log \
+               /var/log/httpd/access_log /var/log/httpd/error_log \
+               /var/log/nginx/access.log /var/log/nginx/error.log \
+               /var/log/audit/audit.log; do
+        [ -r "$lf" ] && CONTENT+=("  ${C_BGRN}●${C_RESET} $lf  ($(du -h "$lf" 2>/dev/null | cut -f1))")
+    done
+    CONTENT+=("")
+    CONTENT+=("  Press ${C_BYEL}L${C_RESET} to enter a log file path for streaming")
 }
 
 _collect_network() {
@@ -583,13 +628,6 @@ _collect_storage() {
         CONTENT+=("  ${line:0:120}")
     done < <(mount 2>/dev/null | head -20)
 
-    CONTENT+=("")
-    CONTENT+=("== TOP DIRECTORIES BY SIZE ==")
-    CONTENT+=("")
-    while IFS= read -r line; do
-        CONTENT+=("  $line")
-    done < <(du -sh /* 2>/dev/null | sort -rh | head -15)
-
     if [ "$os" = "Linux" ] && command -v lsblk >/dev/null 2>&1; then
         CONTENT+=("")
         CONTENT+=("== BLOCK DEVICES ==")
@@ -598,6 +636,37 @@ _collect_storage() {
             CONTENT+=("  $line")
         done < <(lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT 2>/dev/null | head -20)
     fi
+}
+
+# ── Log File Selector ────────────────────────────────────────────────────────
+
+_select_logfile() {
+    local input=""
+    _fill_line $((ROWS - 2)) "$BG_GRN$C_BLK$C_BOLD" \
+        " Enter log file path (Enter=confirm, Esc=cancel, empty=system logs): "
+
+    # Simple inline text input
+    tput cnorm 2>/dev/null
+    while true; do
+        _fill_line $((ROWS - 3)) "$BG_BLK$C_BWHT" " > ${input}▌"
+        IFS= read -rsn1 ch 2>/dev/null
+        case "$ch" in
+            $'\e')
+                tput civis 2>/dev/null
+                return ;;
+            "") # Enter
+                LOG_FILE="$input"
+                SCROLL=0
+                tput civis 2>/dev/null
+                return ;;
+            $'\177'|$'\b') input="${input%?}" ;;
+            *)
+                if [ ${#ch} -eq 1 ] && [ "$(printf '%d' "'$ch")" -ge 32 ] 2>/dev/null; then
+                    input+="$ch"
+                fi
+                ;;
+        esac
+    done
 }
 
 # ── Content Filtering ────────────────────────────────────────────────────────
@@ -619,7 +688,28 @@ _filter_content() {
 
 # ── Tab Data Loading ─────────────────────────────────────────────────────────
 
+_show_loading() {
+    _goto 4 2
+    printf "%s%s Loading %s...%s" "$C_BYEL$C_BOLD" "⟳" "${TABS[$ACTIVE_TAB]}" "$C_RESET"
+    # Force refresh
+    tput cup 4 2 2>/dev/null
+}
+
 _load_tab() {
+    local force=${FORCE_REFRESH:-0}
+    local now
+    now=$(date +%s)
+    local cached_time=${TAB_CACHE_TIME[$ACTIVE_TAB]:-0}
+
+    # Use cache if data is less than 15 seconds old (unless forced)
+    if [ "$force" -eq 0 ] && [ "$((now - cached_time))" -lt 15 ] && [ -n "${TAB_CACHE[$ACTIVE_TAB]:-}" ]; then
+        IFS=$'\x01' read -ra CONTENT <<< "${TAB_CACHE[$ACTIVE_TAB]}"
+        [ -n "$FILTER" ] && _filter_content
+        return
+    fi
+
+    _show_loading
+
     case "$ACTIVE_TAB" in
         0) _collect_system ;;
         1) _collect_services ;;
@@ -629,6 +719,12 @@ _load_tab() {
         5) _collect_certs "$@" ;;
         6) _collect_storage ;;
     esac
+
+    # Store in cache
+    local IFS=$'\x01'
+    TAB_CACHE[$ACTIVE_TAB]="${CONTENT[*]}"
+    TAB_CACHE_TIME[$ACTIVE_TAB]=$now
+
     [ -n "$FILTER" ] && _filter_content
 }
 
@@ -690,9 +786,20 @@ _handle_input() {
     case "$key" in
         q|Q) return 1 ;;
         /) FILTERING=1; FILTER="" ;;
+        l|L)
+            # Log file selection (only on Logs tab)
+            if [ "$ACTIVE_TAB" -eq 2 ]; then
+                _select_logfile
+                FORCE_REFRESH=1
+                _load_tab "$@"
+                FORCE_REFRESH=0
+            fi
+            ;;
         r|R)
             SCROLL=0
+            FORCE_REFRESH=1
             _load_tab "$@"
+            FORCE_REFRESH=0
             ;;
         UP|k) [ "$SCROLL" -gt 0 ] && SCROLL=$((SCROLL - 1)) ;;
         DOWN|j) [ "$SCROLL" -lt "$((total - visible))" ] 2>/dev/null && SCROLL=$((SCROLL + 1)) ;;
@@ -734,7 +841,9 @@ main() {
     _clear
 
     local cert_targets=("$@")
+    FORCE_REFRESH=1
     _load_tab "${cert_targets[@]}"
+    FORCE_REFRESH=0
 
     local last_refresh
     last_refresh=$(date +%s)
@@ -758,11 +867,13 @@ main() {
             break
         fi
 
-        # Auto-refresh every 10 seconds
+        # Auto-refresh every 30 seconds (cache handles 15s dedup)
         local now
         now=$(date +%s)
-        if [ $((now - last_refresh)) -ge 10 ]; then
+        if [ $((now - last_refresh)) -ge 30 ]; then
+            FORCE_REFRESH=1
             _load_tab "${cert_targets[@]}"
+            FORCE_REFRESH=0
             last_refresh=$now
         fi
     done
